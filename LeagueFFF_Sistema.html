@@ -734,80 +734,317 @@ function renderGoleadores(){
 }
 
 // ── PAGOS ──
-function renderPagos(){
-  document.getElementById('topbar-actions').innerHTML=`<button class="btn btn-primary" onclick="modalNuevoPago()">+ Registrar pago</button>`;
-  const totalEsperado=DB.equipos.length*(DB.config.inscripcion||150);
-  const totalCobrado=DB.pagos.filter(p=>p.estado==='Pagado').reduce((s,p)=>s+(p.monto||0),0);
-  const pagados=DB.equipos.filter(e=>DB.pagos.filter(p=>p.equipoId===e.id).reduce((s,p)=>s+(p.monto||0),0)>=(DB.config.inscripcion||150)).length;
-  const rows=DB.equipos.map(e=>{
-    const total=DB.pagos.filter(p=>p.equipoId===e.id).reduce((s,p)=>s+(p.monto||0),0);
-    const cuota=DB.config.inscripcion||150;
-    const pct=cuota>0?Math.min(100,Math.round(total/cuota*100)):0;
-    const estado=total>=cuota?'Pagado':total>0?'Parcial':'Pendiente';
-    const badge=estado==='Pagado'?'badge-green':estado==='Parcial'?'badge-gold':'badge-red';
-    return `<tr>
-      <td style="font-weight:600">${esc(e.nombre)}</td>
-      <td class="td-center">${DB.config.moneda||'USD'}${cuota}</td>
-      <td class="td-center" style="color:var(--green)">${DB.config.moneda||'USD'}${total}</td>
-      <td class="td-center" style="color:var(--accent)">${DB.config.moneda||'USD'}${Math.max(0,cuota-total)}</td>
-      <td><div class="progress" style="min-width:80px"><div class="progress-fill" style="width:${pct}%;background:${pct>=100?'var(--green)':pct>50?'var(--gold)':'var(--accent)'}"></div></div></td>
-      <td><span class="badge ${badge}">${estado}</span></td>
-      <td><button class="btn-icon" onclick="modalNuevoPago('${e.id}')">💳</button>
-          <button class="btn-icon" style="margin-left:4px" onclick="verHistorialPagos('${e.id}')">📋</button></td>
-    </tr>`;
-  }).join('');
-  document.getElementById('content').innerHTML=`
-    <div class="kpi-grid" style="margin-bottom:20px">
-      <div class="kpi"><div class="kpi-label">Total esperado</div><div class="kpi-val" style="color:var(--blue)">${DB.config.moneda||'USD'}${totalEsperado.toLocaleString()}</div></div>
-      <div class="kpi"><div class="kpi-label">Total cobrado</div><div class="kpi-val" style="color:var(--green)">${DB.config.moneda||'USD'}${totalCobrado.toLocaleString()}</div></div>
-      <div class="kpi"><div class="kpi-label">Pendiente</div><div class="kpi-val" style="color:var(--accent)">${DB.config.moneda||'USD'}${Math.max(0,totalEsperado-totalCobrado).toLocaleString()}</div></div>
-      <div class="kpi"><div class="kpi-label">Al corriente</div><div class="kpi-val" style="color:var(--gold)">${pagados}/${DB.equipos.length}</div></div>
-    </div>
-    <div class="table-wrap"><table>
-      <thead><tr><th>Equipo</th><th>Cuota</th><th>Pagado</th><th>Pendiente</th><th>Progreso</th><th>Estado</th><th>Acción</th></tr></thead>
-      <tbody>${rows||'<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text3)">Sin equipos</td></tr>'}</tbody>
-    </table></div>`;
+const CONCEPTOS = [
+  {key:'inscripcion',  label:'Inscripción',     icon:'🏆', defaultMonto: ()=>DB.config.inscripcion||150},
+  {key:'uniforme',     label:'Uniforme',         icon:'👕', defaultMonto: ()=>DB.config.precioUniforme||65},
+  {key:'equipo',       label:'Equipo especial',  icon:'⚙️', defaultMonto: ()=>DB.config.precioEquipo||40},
+  {key:'backpack',     label:'Backpack',         icon:'🎒', defaultMonto: ()=>DB.config.precioBackpack||35},
+  {key:'multa',        label:'Multa / penalidad',icon:'⚠️', defaultMonto: ()=>0},
+  {key:'otro',         label:'Otro',             icon:'💰', defaultMonto: ()=>0},
+];
+
+function getConcepto(key){ return CONCEPTOS.find(c=>c.key===key)||{label:key,icon:'💰'}; }
+const MON = ()=>DB.config.moneda||'USD';
+
+function calcResumenPagos(){
+  // KPIs globales separando inscripciones de artículos
+  const totalCobrado = DB.pagos.filter(p=>p.estado==='Pagado').reduce((s,p)=>s+(p.monto||0),0);
+  const totalInsc    = DB.pagos.filter(p=>p.estado==='Pagado'&&p.concepto==='inscripcion').reduce((s,p)=>s+(p.monto||0),0);
+  const totalArticulos = totalCobrado - totalInsc;
+  const totalEsperado  = DB.equipos.length*(DB.config.inscripcion||150);
+  return {totalCobrado, totalInsc, totalArticulos, totalEsperado};
 }
 
-window.modalNuevoPago = function(eqDefault){
-  const eqOpts=DB.equipos.map(e=>`<option value="${e.id}"${e.id===eqDefault?' selected':''}>${esc(e.nombre)}</option>`).join('');
+// Tab state
+let pagoTab = 'equipos';
+window.setPagoTab = function(tab){
+  pagoTab = tab;
+  document.querySelectorAll('.pago-tab').forEach(t=>t.classList.toggle('active', t.dataset.tab===tab));
+  renderPagosContent();
+};
+
+function renderPagos(){
+  document.getElementById('topbar-actions').innerHTML=`<button class="btn btn-primary" onclick="modalNuevoPago()">+ Registrar pago</button>`;
+  const {totalCobrado,totalInsc,totalArticulos,totalEsperado} = calcResumenPagos();
+  const pendGlobal = Math.max(0, totalEsperado - totalInsc);
+
+  document.getElementById('content').innerHTML=`
+    <div class="kpi-grid" style="margin-bottom:16px">
+      <div class="kpi"><div class="kpi-label">Total cobrado</div><div class="kpi-val" style="color:var(--green)">${MON()}${totalCobrado.toLocaleString()}</div><div class="kpi-sub">todos los conceptos</div></div>
+      <div class="kpi"><div class="kpi-label">Inscripciones</div><div class="kpi-val" style="color:var(--blue)">${MON()}${totalInsc.toLocaleString()}</div><div class="kpi-sub">de ${MON()}${totalEsperado.toLocaleString()} esperados</div></div>
+      <div class="kpi"><div class="kpi-label">Artículos / extras</div><div class="kpi-val" style="color:var(--gold)">${MON()}${totalArticulos.toLocaleString()}</div><div class="kpi-sub">uniformes, equipo, backpacks</div></div>
+      <div class="kpi"><div class="kpi-label">Inscripciones pendientes</div><div class="kpi-val" style="color:var(--accent)">${MON()}${pendGlobal.toLocaleString()}</div></div>
+    </div>
+    <div class="tabs" style="margin-bottom:16px">
+      <div class="tab pago-tab active" data-tab="equipos" onclick="setPagoTab('equipos')">🛡️ Por equipo</div>
+      <div class="tab pago-tab" data-tab="jugadores" onclick="setPagoTab('jugadores')">👤 Por jugador</div>
+      <div class="tab pago-tab" data-tab="todos" onclick="setPagoTab('todos')">📋 Todos los pagos</div>
+    </div>
+    <div id="pagos-content"></div>`;
+  renderPagosContent();
+}
+
+function renderPagosContent(){
+  const el = document.getElementById('pagos-content');
+  if(!el) return;
+  if(pagoTab==='equipos')    el.innerHTML = renderPagosEquipos();
+  if(pagoTab==='jugadores')  el.innerHTML = renderPagosJugadores();
+  if(pagoTab==='todos')      el.innerHTML = renderPagosTodos();
+}
+
+function renderPagosEquipos(){
+  const cuota = DB.config.inscripcion||150;
+  const rows = DB.equipos.map(e=>{
+    const pagosEq = DB.pagos.filter(p=>p.equipoId===e.id && (!p.jugadorId) && p.concepto==='inscripcion');
+    const total   = pagosEq.filter(p=>p.estado==='Pagado').reduce((s,p)=>s+(p.monto||0),0);
+    const pct     = cuota>0?Math.min(100,Math.round(total/cuota*100)):0;
+    const estado  = total>=cuota?'Pagado':total>0?'Parcial':'Pendiente';
+    const badge   = estado==='Pagado'?'badge-green':estado==='Parcial'?'badge-gold':'badge-red';
+    const jugCount= getJugadoresByEquipo(e.id).length;
+    // extras for this equipo (uniforms, backpacks etc linked to equipo)
+    const extras  = DB.pagos.filter(p=>p.equipoId===e.id && p.concepto!=='inscripcion').reduce((s,p)=>s+(p.estado==='Pagado'?p.monto:0),0);
+    return `<tr>
+      <td><div style="display:flex;align-items:center;gap:8px"><span class="avatar">${(e.nombre||'?').substring(0,2).toUpperCase()}</span><div><div style="font-weight:600">${esc(e.nombre)}</div><div style="font-size:11px;color:var(--text3)">${jugCount} jugadores</div></div></div></td>
+      <td class="td-center">${MON()}${cuota}</td>
+      <td class="td-center" style="color:var(--green);font-weight:600">${MON()}${total}</td>
+      <td class="td-center" style="color:var(--accent)">${MON()}${Math.max(0,cuota-total)}</td>
+      <td><div class="progress" style="min-width:80px"><div class="progress-fill" style="width:${pct}%;background:${pct>=100?'var(--green)':pct>50?'var(--gold)':'var(--accent)'}"></div></div></td>
+      <td><span class="badge ${badge}">${estado}</span></td>
+      ${extras>0?`<td class="td-center" style="color:var(--gold);font-size:12px">+${MON()}${extras} extras</td>`:`<td class="td-center" style="color:var(--text3);font-size:12px">—</td>`}
+      <td>
+        <button class="btn-icon" title="Registrar pago inscripción" onclick="modalNuevoPago('${e.id}','','inscripcion')">💳</button>
+        <button class="btn-icon" style="margin-left:4px" title="Ver historial" onclick="verHistorialEquipo('${e.id}')">📋</button>
+      </td>
+    </tr>`;
+  }).join('');
+  return `<div class="table-wrap"><table>
+    <thead><tr><th>Equipo</th><th>Cuota inscr.</th><th>Pagado</th><th>Pendiente</th><th>Progreso</th><th>Estado</th><th>Extras</th><th>Acción</th></tr></thead>
+    <tbody>${rows||'<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--text3)">Sin equipos</td></tr>'}</tbody>
+  </table></div>`;
+}
+
+function renderPagosJugadores(){
+  const rows = DB.jugadores.map(j=>{
+    const eq = getEquipo(j.equipoId);
+    const pagosJ = DB.pagos.filter(p=>p.jugadorId===j.id);
+    const total  = pagosJ.filter(p=>p.estado==='Pagado').reduce((s,p)=>s+(p.monto||0),0);
+    const conceptosVistos = [...new Set(pagosJ.map(p=>p.concepto))].map(k=>getConcepto(k).icon).join(' ');
+    const pendiente = pagosJ.filter(p=>p.estado==='Pendiente'||p.estado==='Parcial').length;
+    return `<tr>
+      <td><div style="display:flex;align-items:center;gap:8px"><span class="avatar" style="width:28px;height:28px;font-size:11px">${(j.nombre||'?').substring(0,2).toUpperCase()}</span><div><div style="font-weight:600">${esc(j.nombre)}</div><div style="font-size:11px;color:var(--text3)">#${j.numero||'—'} · ${esc(j.posicion||'—')}</div></div></div></td>
+      <td>${eq?`<span class="badge badge-blue">${esc(eq.nombre)}</span>`:'<span class="badge badge-gray">—</span>'}</td>
+      <td class="td-center" style="font-size:16px">${conceptosVistos||'—'}</td>
+      <td class="td-center" style="color:var(--green);font-weight:600">${total>0?MON()+total:'—'}</td>
+      <td class="td-center">${pendiente>0?`<span class="badge badge-red">${pendiente} pendiente${pendiente>1?'s':''}</span>`:'<span class="badge badge-green">Al corriente</span>'}</td>
+      <td>
+        <button class="btn-icon" title="Registrar artículo" onclick="modalNuevoPago('${j.equipoId||''}','${j.id}','uniforme')">💳</button>
+        <button class="btn-icon" style="margin-left:4px" title="Ver historial" onclick="verHistorialJugador('${j.id}')">📋</button>
+      </td>
+    </tr>`;
+  }).join('');
+  return `<div class="table-wrap"><table>
+    <thead><tr><th>Jugador</th><th>Equipo</th><th>Artículos</th><th>Total pagado</th><th>Estado</th><th>Acción</th></tr></thead>
+    <tbody>${rows||'<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--text3)">Sin jugadores registrados</td></tr>'}</tbody>
+  </table></div>`;
+}
+
+function renderPagosTodos(){
+  const pagos = [...DB.pagos].sort((a,b)=>b.fecha?.localeCompare(a.fecha||'')||0);
+  const rows = pagos.map(p=>{
+    const eq  = getEquipo(p.equipoId);
+    const jug = p.jugadorId ? DB.jugadores.find(j=>j.id===p.jugadorId) : null;
+    const con = getConcepto(p.concepto||'otro');
+    const badge = p.estado==='Pagado'?'badge-green':p.estado==='Parcial'?'badge-gold':'badge-red';
+    return `<tr>
+      <td style="font-size:12px;color:var(--text3)">${fmt(p.fecha)}</td>
+      <td><span style="font-size:16px">${con.icon}</span> <span style="font-size:12px;font-weight:600">${esc(con.label)}</span></td>
+      <td>${eq?esc(eq.nombre):'—'}</td>
+      <td>${jug?`<span style="color:var(--gold)">${esc(jug.nombre)}</span>`:'<span style="color:var(--text3)">—</span>'}</td>
+      <td style="font-weight:700;color:var(--green)">${MON()}${p.monto||0}</td>
+      <td>${esc(p.metodo||'—')}</td>
+      <td><span class="badge ${badge}">${p.estado}</span></td>
+      <td>${esc(p.ref||'—')}</td>
+      <td><button class="btn-icon btn-sm" onclick="eliminarPago('${p.id}')">🗑️</button></td>
+    </tr>`;
+  }).join('');
+  return `<div class="table-wrap"><table>
+    <thead><tr><th>Fecha</th><th>Concepto</th><th>Equipo</th><th>Jugador</th><th>Monto</th><th>Método</th><th>Estado</th><th>Ref</th><th></th></tr></thead>
+    <tbody>${rows||'<tr><td colspan="9" style="text-align:center;padding:32px;color:var(--text3)">Sin pagos registrados</td></tr>'}</tbody>
+  </table></div>`;
+}
+
+// ── MODAL NUEVO PAGO (equipo + jugador + concepto) ──
+window.modalNuevoPago = function(eqDefault, jugDefault, concDefault){
+  const eqOpts  = DB.equipos.map(e=>`<option value="${e.id}"${e.id===eqDefault?' selected':''}>${esc(e.nombre)}</option>`).join('');
+  const jugOpts = DB.jugadores.map(j=>`<option value="${j.id}"${j.id===jugDefault?' selected':''}>${esc(j.nombre)}${getEquipo(j.equipoId)?' ('+esc(getEquipo(j.equipoId).nombre)+')':''}</option>`).join('');
+  const conOpts = CONCEPTOS.map(c=>`<option value="${c.key}"${c.key===(concDefault||'inscripcion')?' selected':''}>${c.icon} ${c.label}</option>`).join('');
+  const defMonto = (CONCEPTOS.find(c=>c.key===(concDefault||'inscripcion'))||CONCEPTOS[0]).defaultMonto();
+
   openModal(`<div class="modal-header"><span class="modal-title">💳 Registrar Pago</span><button class="btn-icon" onclick="closeModal()">✕</button></div>
     <div class="form-grid">
-      <div class="form-group" style="grid-column:1/-1"><label>Equipo *</label><select id="f-equipo"><option value="">Seleccionar...</option>${eqOpts}</select></div>
-      <div class="form-group"><label>Monto</label><input id="f-monto" type="number" value="${DB.config.inscripcion||150}"></div>
-      <div class="form-group"><label>Fecha</label><input id="f-fecha" type="date" value="${new Date().toISOString().split('T')[0]}"></div>
-      <div class="form-group"><label>Método</label><select id="f-metodo"><option>Efectivo</option><option>Transferencia</option><option>Venmo</option><option>Zelle</option><option>PayPal</option></select></div>
-      <div class="form-group"><label>Estado</label><select id="f-estado"><option>Pagado</option><option>Parcial</option><option>Pendiente</option></select></div>
-      <div class="form-group"><label>Referencia</label><input id="f-ref" placeholder="# referencia o nota"></div>
+      <div class="form-group" style="grid-column:1/-1">
+        <label>Concepto *</label>
+        <select id="f-concepto" onchange="onConcChange(this.value)">${conOpts}</select>
+      </div>
+      <div class="form-group" style="grid-column:1/-1">
+        <label>Equipo</label>
+        <select id="f-equipo" onchange="onEquipoChange(this.value)">
+          <option value="">— Sin equipo —</option>${eqOpts}
+        </select>
+      </div>
+      <div class="form-group" style="grid-column:1/-1" id="f-jugador-wrap">
+        <label>Jugador <span style="color:var(--text3);font-weight:400;font-size:11px">(opcional para artículos personales)</span></label>
+        <select id="f-jugador">
+          <option value="">— Sin jugador específico —</option>${jugOpts}
+        </select>
+      </div>
+      <div class="form-group"><label>Monto (${MON()}) *</label><input id="f-monto" type="number" min="0" step="0.01" value="${defMonto}"></div>
+      <div class="form-group"><label>Fecha *</label><input id="f-fecha" type="date" value="${new Date().toISOString().split('T')[0]}"></div>
+      <div class="form-group"><label>Método de pago</label>
+        <select id="f-metodo"><option>Efectivo</option><option>Transferencia</option><option>Venmo</option><option>Zelle</option><option>PayPal</option><option>Otro</option></select>
+      </div>
+      <div class="form-group"><label>Estado</label>
+        <select id="f-estado"><option>Pagado</option><option>Parcial</option><option>Pendiente</option></select>
+      </div>
+      <div class="form-group"><label>Cantidad / talla</label><input id="f-talla" placeholder="Ej: M, L, XL, Kit #5"></div>
+      <div class="form-group"><label>Referencia / comprobante</label><input id="f-ref" placeholder="# transferencia o nota"></div>
+      <div class="form-group" style="grid-column:1/-1"><label>Notas</label><input id="f-notas" placeholder="Información adicional..."></div>
     </div>
-    <div class="modal-footer"><button class="btn btn-secondary" onclick="closeModal()">Cancelar</button><button class="btn btn-green" onclick="guardarPago()">Confirmar pago</button></div>`);
+    <div id="pago-preview" style="margin-top:4px;padding:10px 14px;background:var(--bg3);border-radius:6px;font-size:12px;color:var(--text2)">
+      Selecciona concepto y monto para ver el resumen
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-green" onclick="guardarPago()">✅ Confirmar pago</button>
+    </div>`);
+  updatePagoPreview();
+};
+
+window.onConcChange = function(key){
+  const c = CONCEPTOS.find(x=>x.key===key);
+  if(c){ document.getElementById('f-monto').value = c.defaultMonto(); }
+  updatePagoPreview();
+};
+
+window.onEquipoChange = function(eqId){
+  // Filter jugadores select to only show players of selected team
+  const sel = document.getElementById('f-jugador');
+  const jugadores = eqId ? DB.jugadores.filter(j=>j.equipoId===eqId) : DB.jugadores;
+  sel.innerHTML = '<option value="">— Sin jugador específico —</option>'
+    + jugadores.map(j=>`<option value="${j.id}">${esc(j.nombre)}</option>`).join('');
+  updatePagoPreview();
+};
+
+window.updatePagoPreview = function(){
+  const prev = document.getElementById('pago-preview');
+  if(!prev) return;
+  const conKey = (document.getElementById('f-concepto')||{}).value||'';
+  const eqId   = (document.getElementById('f-equipo')||{}).value||'';
+  const jugId  = (document.getElementById('f-jugador')||{}).value||'';
+  const monto  = parseFloat((document.getElementById('f-monto')||{}).value)||0;
+  const estado = (document.getElementById('f-estado')||{}).value||'';
+  const con    = getConcepto(conKey);
+  const eq     = getEquipo(eqId);
+  const jug    = jugId ? DB.jugadores.find(j=>j.id===jugId) : null;
+  let txt = `${con.icon} <strong>${con.label}</strong>`;
+  if(eq)  txt += ` · Equipo: <strong>${esc(eq.nombre)}</strong>`;
+  if(jug) txt += ` · Jugador: <strong>${esc(jug.nombre)}</strong>`;
+  if(monto>0) txt += ` · <strong style="color:var(--green)">${MON()}${monto.toFixed(2)}</strong>`;
+  if(estado) txt += ` · <span class="badge ${estado==='Pagado'?'badge-green':estado==='Parcial'?'badge-gold':'badge-red'}">${estado}</span>`;
+  prev.innerHTML = txt;
 };
 
 window.guardarPago = async function(){
-  const equipoId=document.getElementById('f-equipo').value;
-  if(!equipoId){ notify('Selecciona un equipo','error'); return; }
+  const concepto = document.getElementById('f-concepto').value;
+  const equipoId = document.getElementById('f-equipo').value;
+  const jugadorId= document.getElementById('f-jugador').value;
+  const monto    = parseFloat(document.getElementById('f-monto').value)||0;
+  const fecha    = document.getElementById('f-fecha').value;
+  if(!concepto){ notify('Selecciona un concepto','error'); return; }
+  if(!equipoId && !jugadorId){ notify('Selecciona al menos un equipo o jugador','error'); return; }
+  if(monto<=0){ notify('El monto debe ser mayor a 0','error'); return; }
+  if(!fecha){ notify('La fecha es requerida','error'); return; }
+  const data = {
+    concepto, equipoId: equipoId||null, jugadorId: jugadorId||null,
+    monto, fecha, metodo: document.getElementById('f-metodo').value,
+    estado: document.getElementById('f-estado').value,
+    talla: document.getElementById('f-talla').value,
+    ref: document.getElementById('f-ref').value,
+    notas: document.getElementById('f-notas').value,
+    creadoEn: new Date().toISOString()
+  };
   try{
-    await addDoc(COL.pagos(),{equipoId,monto:parseFloat(document.getElementById('f-monto').value)||0,
-      fecha:document.getElementById('f-fecha').value,metodo:document.getElementById('f-metodo').value,
-      estado:document.getElementById('f-estado').value,ref:document.getElementById('f-ref').value});
-    closeModal(); notify('Pago registrado');
-  }catch(e){ notify('Error','error'); }
+    await addDoc(COL.pagos(), data);
+    closeModal();
+    notify('Pago registrado ✅');
+  }catch(e){ notify('Error: '+e.message,'error'); }
 };
 
-window.verHistorialPagos = function(eqId){
-  const e=getEquipo(eqId); if(!e) return;
-  const pagos=DB.pagos.filter(p=>p.equipoId===eqId);
-  const rows=pagos.map(p=>`<tr>
-    <td>${fmt(p.fecha)}</td><td style="color:var(--green);font-weight:600">${DB.config.moneda||'USD'}${p.monto}</td>
-    <td>${esc(p.metodo||'—')}</td>
-    <td><span class="badge ${p.estado==='Pagado'?'badge-green':p.estado==='Parcial'?'badge-gold':'badge-red'}">${p.estado}</span></td>
-    <td>${esc(p.ref||'—')}</td>
-    <td><button class="btn-icon btn-sm" onclick="eliminarPago('${p.id}')">🗑️</button></td>
-  </tr>`).join('');
+// ── HISTORIAL EQUIPO ──
+window.verHistorialEquipo = function(eqId){
+  const e = getEquipo(eqId); if(!e) return;
+  const pagos = DB.pagos.filter(p=>p.equipoId===eqId);
+  const totalPagado = pagos.filter(p=>p.estado==='Pagado').reduce((s,p)=>s+(p.monto||0),0);
+  const rows = pagos.map(p=>{
+    const con = getConcepto(p.concepto||'otro');
+    const jug = p.jugadorId ? DB.jugadores.find(j=>j.id===p.jugadorId) : null;
+    const badge = p.estado==='Pagado'?'badge-green':p.estado==='Parcial'?'badge-gold':'badge-red';
+    return `<tr>
+      <td style="font-size:12px">${fmt(p.fecha)}</td>
+      <td>${con.icon} <span style="font-size:12px">${esc(con.label)}</span></td>
+      <td style="font-size:12px;color:var(--text2)">${jug?esc(jug.nombre):'—'}</td>
+      <td style="font-weight:600;color:var(--green)">${MON()}${p.monto||0}</td>
+      <td>${esc(p.metodo||'—')}</td>
+      <td><span class="badge ${badge}">${p.estado}</span></td>
+      <td style="font-size:11px;color:var(--text3)">${esc(p.talla||p.ref||'—')}</td>
+      <td><button class="btn-icon btn-sm" onclick="eliminarPago('${p.id}')">🗑️</button></td>
+    </tr>`;
+  }).join('');
   openModal(`<div class="modal-header"><span class="modal-title">📋 ${esc(e.nombre)}</span><button class="btn-icon" onclick="closeModal()">✕</button></div>
-    <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Monto</th><th>Método</th><th>Estado</th><th>Ref</th><th></th></tr></thead>
-    <tbody>${rows||'<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text3)">Sin pagos</td></tr>'}</tbody></table></div>
-    <div class="modal-footer"><button class="btn btn-primary" onclick="closeModal();modalNuevoPago('${eqId}')">+ Agregar pago</button></div>`);
+    <div style="margin-bottom:12px;font-size:13px;color:var(--text2)">Total pagado: <strong style="color:var(--green)">${MON()}${totalPagado}</strong> · ${pagos.length} registro(s)</div>
+    <div class="table-wrap" style="max-height:380px;overflow-y:auto"><table>
+      <thead><tr><th>Fecha</th><th>Concepto</th><th>Jugador</th><th>Monto</th><th>Método</th><th>Estado</th><th>Ref/Talla</th><th></th></tr></thead>
+      <tbody>${rows||'<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text3)">Sin pagos</td></tr>'}</tbody>
+    </table></div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" onclick="closeModal();modalNuevoPago('${eqId}','','inscripcion')">+ Inscripción</button>
+      <button class="btn btn-secondary" onclick="closeModal();modalNuevoPago('${eqId}','','uniforme')">+ Artículo</button>
+    </div>`);
+};
+
+// ── HISTORIAL JUGADOR ──
+window.verHistorialJugador = function(jugId){
+  const j = DB.jugadores.find(x=>x.id===jugId); if(!j) return;
+  const eq = getEquipo(j.equipoId);
+  const pagos = DB.pagos.filter(p=>p.jugadorId===jugId);
+  const totalPagado = pagos.filter(p=>p.estado==='Pagado').reduce((s,p)=>s+(p.monto||0),0);
+  const rows = pagos.map(p=>{
+    const con = getConcepto(p.concepto||'otro');
+    const badge = p.estado==='Pagado'?'badge-green':p.estado==='Parcial'?'badge-gold':'badge-red';
+    return `<tr>
+      <td style="font-size:12px">${fmt(p.fecha)}</td>
+      <td>${con.icon} <span style="font-size:12px">${esc(con.label)}</span></td>
+      <td style="font-weight:600;color:var(--green)">${MON()}${p.monto||0}</td>
+      <td>${esc(p.metodo||'—')}</td>
+      <td><span class="badge ${badge}">${p.estado}</span></td>
+      <td style="font-size:11px;color:var(--text3)">${esc(p.talla||'—')}</td>
+      <td style="font-size:11px;color:var(--text3)">${esc(p.ref||'—')}</td>
+      <td><button class="btn-icon btn-sm" onclick="eliminarPago('${p.id}')">🗑️</button></td>
+    </tr>`;
+  }).join('');
+  openModal(`<div class="modal-header"><span class="modal-title">📋 ${esc(j.nombre)}</span><button class="btn-icon" onclick="closeModal()">✕</button></div>
+    <div style="margin-bottom:12px;font-size:13px;color:var(--text2)">
+      ${eq?`Equipo: <strong>${esc(eq.nombre)}</strong> · `:''}Total pagado: <strong style="color:var(--green)">${MON()}${totalPagado}</strong>
+    </div>
+    <div class="table-wrap" style="max-height:340px;overflow-y:auto"><table>
+      <thead><tr><th>Fecha</th><th>Concepto</th><th>Monto</th><th>Método</th><th>Estado</th><th>Talla</th><th>Ref</th><th></th></tr></thead>
+      <tbody>${rows||'<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text3)">Sin pagos registrados</td></tr>'}</tbody>
+    </table></div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" onclick="closeModal();modalNuevoPago('${j.equipoId||''}','${jugId}','uniforme')">+ Uniforme</button>
+      <button class="btn btn-secondary" onclick="closeModal();modalNuevoPago('${j.equipoId||''}','${jugId}','backpack')">+ Backpack</button>
+      <button class="btn btn-secondary" onclick="closeModal();modalNuevoPago('${j.equipoId||''}','${jugId}','equipo')">+ Equipo especial</button>
+    </div>`);
 };
 
 window.eliminarPago = async function(id){
@@ -841,10 +1078,13 @@ function renderConfig(){
           <div class="form-group"><label>Hora inicio Dom</label><input id="cfg-hrdom" type="time" value="${c.horaInicioDom||'08:00'}"></div>
         </div>
       </div>
-      <div class="card"><div style="font-weight:700;margin-bottom:16px">💰 Finanzas</div>
+      <div class="card"><div style="font-weight:700;margin-bottom:16px">💰 Finanzas &amp; Artículos</div>
         <div class="form-grid">
-          <div class="form-group"><label>Inscripción por equipo</label><input id="cfg-inscripcion" type="number" value="${c.inscripcion||150}"></div>
-          <div class="form-group"><label>Pago parcial</label><input id="cfg-parcial" type="number" value="${c.pagoParcial||75}"></div>
+          <div class="form-group"><label>🏆 Inscripción por equipo</label><input id="cfg-inscripcion" type="number" value="${c.inscripcion||150}"></div>
+          <div class="form-group"><label>Pago parcial (inscripción)</label><input id="cfg-parcial" type="number" value="${c.pagoParcial||75}"></div>
+          <div class="form-group"><label>👕 Precio uniforme</label><input id="cfg-uniforme" type="number" value="${c.precioUniforme||65}"></div>
+          <div class="form-group"><label>⚙️ Equipo especial</label><input id="cfg-equipo-precio" type="number" value="${c.precioEquipo||40}"></div>
+          <div class="form-group"><label>🎒 Precio backpack</label><input id="cfg-backpack" type="number" value="${c.precioBackpack||35}"></div>
         </div>
       </div>
       <div class="card"><div style="font-weight:700;margin-bottom:16px">🏟️ Campos</div>
@@ -882,6 +1122,9 @@ window.guardarConfig = async function(){
     horaInicioDom:document.getElementById('cfg-hrdom').value,
     inscripcion:parseFloat(document.getElementById('cfg-inscripcion').value)||150,
     pagoParcial:parseFloat(document.getElementById('cfg-parcial').value)||75,
+    precioUniforme:parseFloat(document.getElementById('cfg-uniforme').value)||65,
+    precioEquipo:parseFloat(document.getElementById('cfg-equipo-precio').value)||40,
+    precioBackpack:parseFloat(document.getElementById('cfg-backpack').value)||35,
     campos:DB.config.campos
   };
   try{
