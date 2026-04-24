@@ -1186,7 +1186,7 @@ window.closeModal=closeModal;
 window.openModal=openModal;
 
 // ── MOBILE SIDEBAR ──
-function toggleSidebar(){
+window.toggleSidebar = function(){
   const sb  = document.getElementById('sidebar');
   const hb  = document.getElementById('hamburger');
   const ov  = document.getElementById('sidebar-overlay');
@@ -1194,16 +1194,18 @@ function toggleSidebar(){
   hb.classList.toggle('open', open);
   ov.classList.toggle('show', open);
   document.body.style.overflow = open ? 'hidden' : '';
-}
-function closeSidebar(){
+};
+window.closeSidebar = function(){
   document.getElementById('sidebar').classList.remove('open');
   document.getElementById('hamburger').classList.remove('open');
   document.getElementById('sidebar-overlay').classList.remove('show');
   document.body.style.overflow = '';
-}
-// Close sidebar on nav item click (mobile)
-document.querySelectorAll('.nav-item').forEach(n=>{
-  n.addEventListener('click', ()=>{ if(window.innerWidth<=768) closeSidebar(); });
+};
+// Use event delegation so it works for dynamically rendered nav items too
+document.getElementById('sidebar').addEventListener('click', function(e){
+  if(e.target.closest('.nav-item') && window.innerWidth <= 768){
+    window.closeSidebar();
+  }
 });
 
 </script>
