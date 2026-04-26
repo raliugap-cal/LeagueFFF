@@ -154,6 +154,7 @@ td{padding:9px 12px;color:var(--text);vertical-align:middle}
       <div class="nav-item" onclick="nav('calendario')"><span class="nav-icon">📅</span>Calendario</div>
       <div class="nav-item" onclick="nav('standings')"><span class="nav-icon">🏅</span>Standings</div>
       <div class="nav-item" onclick="nav('goleadores')"><span class="nav-icon">🎯</span>Goleadores</div>
+      <div class="nav-item" onclick="nav('expedientes')"><span class="nav-icon">📁</span>Expedientes</div>
       <div class="nav-section">Admin</div>
       <div class="nav-item" onclick="nav('pagos')"><span class="nav-icon">💰</span>Pagos</div>
       <div class="nav-item" onclick="nav('config')"><span class="nav-icon">⚙️</span>Configuración</div>
@@ -203,11 +204,14 @@ const db = getFirestore(app);
 
 // ── Colecciones ──
 const COL = {
-  config:    () => doc(db, 'liga', 'config'),
-  equipos:   () => collection(db, 'equipos'),
-  jugadores: () => collection(db, 'jugadores'),
-  partidos:  () => collection(db, 'partidos'),
-  pagos:     () => collection(db, 'pagos')
+  config:      () => doc(db, 'liga', 'config'),
+  equipos:     () => collection(db, 'equipos'),
+  jugadores:   () => collection(db, 'jugadores'),
+  partidos:    () => collection(db, 'partidos'),
+  pagos:       () => collection(db, 'pagos'),
+  expedientes: () => collection(db, 'expedientes'),
+  asistencias: () => collection(db, 'asistencias'),
+  incidentes:  () => collection(db, 'incidentes'),
 };
 
 // ── Cache local (para renders rápidos) ──
@@ -215,7 +219,8 @@ var DB = {
   config:{liga:'Fremont Osos FFF',temporada:'2025',campos:['Field A','Field B','Field C','Field D','Field E'],
     ptsVictoria:3,ptsEmpate:1,ptsDerrota:0,duracionPartido:80,horaInicioSab:'08:00',horaInicioDom:'08:00',
     inscripcion:150,pagoParcial:75,moneda:'USD',equiposMax:50,formato:'Round Robin',fechaInicio:'2025-05-03'},
-  equipos:[], jugadores:[], partidos:[], pagos:[]
+  equipos:[], jugadores:[], partidos:[], pagos:[],
+  expedientes:[], asistencias:[], incidentes:[]
 };
 
 // ── Utilities ──
@@ -272,6 +277,21 @@ function startListeners(){
     if(currentPage==='pagos') renderPagos();
     if(currentPage==='dashboard') renderDashboard();
   });
+  // Expedientes
+  onSnapshot(query(COL.expedientes()), snap => {
+    DB.expedientes = snap.docs.map(d=>({id:d.id,...d.data()}));
+    if(currentPage==='expedientes') renderExpedientes();
+  });
+  // Asistencias
+  onSnapshot(query(COL.asistencias(), orderBy('fecha')), snap => {
+    DB.asistencias = snap.docs.map(d=>({id:d.id,...d.data()}));
+    if(currentPage==='expedientes') renderExpedientes();
+  });
+  // Incidentes
+  onSnapshot(query(COL.incidentes(), orderBy('fecha')), snap => {
+    DB.incidentes = snap.docs.map(d=>({id:d.id,...d.data()}));
+    if(currentPage==='expedientes') renderExpedientes();
+  });
 }
 
 // ── NAVIGATION ──
@@ -284,7 +304,8 @@ const pageTitles = {
   standings:['Tabla de Posiciones','Clasificación automática'],
   goleadores:['Tabla de Goleadores','Estadísticas individuales'],
   pagos:['Control de Pagos','Inscripciones y pagos'],
-  config:['Configuración','Parámetros de la liga']
+  config:['Configuración','Parámetros de la liga'],
+  expedientes:['Expedientes','Historial completo por jugador']
 };
 window.nav = function(page){
   currentPage=page;
@@ -296,7 +317,7 @@ window.nav = function(page){
   document.getElementById('topbar-actions').innerHTML='';
   const renders={dashboard:renderDashboard,equipos:renderEquipos,jugadores:renderJugadores,
     calendario:renderCalendario,standings:renderStandings,goleadores:renderGoleadores,
-    pagos:renderPagos,config:renderConfig};
+    pagos:renderPagos,config:renderConfig,expedientes:renderExpedientes};
   (renders[page]||renderDashboard)();
 };
 
@@ -1167,6 +1188,563 @@ window.guardarConfig = async function(){
     await setDoc(COL.config(), cfg);
     notify('Configuración guardada');
   }catch(e){ notify('Error: '+e.message,'error'); }
+};
+
+
+// ══════════════════════════════════════════════════════════════
+// ── EXPEDIENTES ──
+// ══════════════════════════════════════════════════════════════
+
+// helper: get or create expediente record for a jugador
+function getExpediente(jugadorId){
+  return DB.expedientes.find(e=>e.jugadorId===jugadorId)||null;
+}
+
+// ── MAIN LIST ──────────────────────────────────────────────────
+function renderExpedientes(){
+  document.getElementById('topbar-actions').innerHTML=`<button class="btn btn-primary" onclick="modalListaAsistencia()">📋 Pasar lista</button>`;
+  const q=(document.getElementById('exp-search')||{}).value||'';
+  const eq=(document.getElementById('exp-equipo')||{}).value||'';
+  let jugadores=[...DB.jugadores];
+  if(q) jugadores=jugadores.filter(j=>(j.nombre||'').toLowerCase().includes(q.toLowerCase()));
+  if(eq) jugadores=jugadores.filter(j=>j.equipoId===eq);
+
+  const eqOpts=DB.equipos.map(e=>`<option value="${e.id}"${e.id===eq?' selected':''}>${esc(e.nombre)}</option>`).join('');
+
+  const rows=jugadores.map(j=>{
+    const equipo=getEquipo(j.equipoId);
+    const exp=getExpediente(j.id);
+    const asistJ=DB.asistencias.filter(a=>a.jugadorId===j.id);
+    const totalSes=DB.asistencias.map(a=>a.sesionId).filter((v,i,s)=>s.indexOf(v)===i).length;
+    const presentes=asistJ.filter(a=>a.estado==='Presente').length;
+    const pct=totalSes>0?Math.round(presentes/totalSes*100):null;
+    const incJ=DB.incidentes.filter(i=>i.jugadorId===j.id);
+    const lesiones=incJ.filter(i=>i.tipo==='Lesion'||i.tipo==='Accidente').length;
+    const waiverOk=exp?.waiverFirmado===true;
+    return `<tr style="cursor:pointer" onclick="abrirExpediente('${j.id}')">
+      <td><div style="display:flex;align-items:center;gap:10px">
+        <span class="avatar" style="background:${j.color||'var(--accent)'}">${(j.nombre||'?').substring(0,2).toUpperCase()}</span>
+        <div><div style="font-weight:600">${esc(j.nombre)}</div>
+        <div style="font-size:11px;color:var(--text3)">#${j.numero||'—'} · ${esc(j.posicion||'—')}</div></div>
+      </div></td>
+      <td>${equipo?`<span class="badge badge-blue">${esc(equipo.nombre)}</span>`:'<span class="badge badge-gray">—</span>'}</td>
+      <td class="td-center">
+        ${pct!==null
+          ?`<span style="font-weight:700;color:${pct>=80?'var(--green)':pct>=60?'var(--gold)':'var(--accent)'}">${pct}%</span>
+            <div style="font-size:10px;color:var(--text3)">${presentes}/${totalSes} sesiones</div>`
+          :'<span style="color:var(--text3)">—</span>'}
+      </td>
+      <td class="td-center">${lesiones>0?`<span class="badge badge-red">⚠️ ${lesiones}</span>`:'<span style="color:var(--text3)">—</span>'}</td>
+      <td class="td-center">${waiverOk?'<span class="badge badge-green">✅ Firmado</span>':'<span class="badge badge-red">❌ Pendiente</span>'}</td>
+      <td class="td-center"><span class="badge ${exp?'badge-green':'badge-gray'}">${exp?'Completo':'Incompleto'}</span></td>
+      <td><button class="btn-icon" onclick="event.stopPropagation();abrirExpediente('${j.id}')">📁</button></td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('content').innerHTML=`
+    <div class="search-bar">
+      <input id="exp-search" placeholder="Buscar jugador..." oninput="renderExpedientes()" value="${esc(q)}">
+      <select id="exp-equipo" onchange="renderExpedientes()" style="background:var(--card);border:1px solid var(--border);border-radius:6px;padding:8px 12px;color:var(--text);font-size:13px">
+        <option value="">Todos los equipos</option>${eqOpts}
+      </select>
+    </div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Jugador</th><th>Equipo</th><th>Asistencia</th><th>Incidentes</th><th>Waiver</th><th>Expediente</th><th></th></tr></thead>
+      <tbody>${rows||'<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text3)">Sin jugadores registrados</td></tr>'}</tbody>
+    </table></div>
+    <div style="margin-top:10px;font-size:12px;color:var(--text3)">${jugadores.length} jugador(es) · Haz clic en cualquier fila para ver el expediente completo</div>`;
+}
+
+// ── ABRIR EXPEDIENTE INDIVIDUAL ────────────────────────────────
+window.abrirExpediente = async function(jugadorId){
+  const j=DB.jugadores.find(x=>x.id===jugadorId); if(!j) return;
+  const eq=getEquipo(j.equipoId);
+  let exp=getExpediente(jugadorId);
+
+  // Asistencia stats
+  const asistJ=DB.asistencias.filter(a=>a.jugadorId===jugadorId);
+  const sesionesIds=[...new Set(DB.asistencias.map(a=>a.sesionId))];
+  const totalSes=sesionesIds.length;
+  const presentes=asistJ.filter(a=>a.estado==='Presente').length;
+  const ausentes=asistJ.filter(a=>a.estado==='Ausente').length;
+  const justificados=asistJ.filter(a=>a.estado==='Justificado').length;
+  const pctAsist=totalSes>0?Math.round(presentes/totalSes*100):0;
+
+  // Incidentes
+  const incJ=[...DB.incidentes.filter(i=>i.jugadorId===jugadorId)].sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''));
+
+  // Sesiones con estado de este jugador
+  const sesRows=sesionesIds.slice().reverse().map(sid=>{
+    const sesInfo=DB.asistencias.find(a=>a.sesionId===sid);
+    const aJ=asistJ.find(a=>a.sesionId===sid);
+    const estado=aJ?.estado||'Sin registro';
+    const col=estado==='Presente'?'var(--green)':estado==='Ausente'?'var(--accent)':estado==='Justificado'?'var(--gold)':'var(--text3)';
+    return `<tr>
+      <td style="font-size:12px">${fmt(sesInfo?.fecha)}</td>
+      <td><span style="font-size:11px;background:var(--bg3);padding:2px 8px;border-radius:4px">${esc(sesInfo?.tipo||'—')}</span></td>
+      <td><span style="color:${col};font-weight:600;font-size:12px">${estado}</span></td>
+      <td style="font-size:11px;color:var(--text3)">${esc(aJ?.nota||'')}</td>
+      <td>
+        <select onchange="cambiarAsistencia('${jugadorId}','${sid}',this.value)"
+          style="font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:2px 6px">
+          ${['Presente','Ausente','Justificado'].map(o=>`<option${o===estado?' selected':''}>${o}</option>`).join('')}
+        </select>
+      </td>
+    </tr>`;
+  }).join('');
+
+  // Incidentes rows
+  const incRows=incJ.map(inc=>`<tr>
+    <td style="font-size:12px">${fmt(inc.fecha)}</td>
+    <td><span class="badge ${inc.tipo==='Lesion'?'badge-red':inc.tipo==='Accidente'?'badge-gold':'badge-blue'}">${inc.tipo}</span></td>
+    <td style="font-size:12px">${esc(inc.descripcion||'—')}</td>
+    <td style="font-size:12px;color:var(--text3)">${esc(inc.tratamiento||'—')}</td>
+    <td style="font-size:12px;color:var(--text3)">${esc(inc.diasBaja||'—')} días</td>
+    <td><button class="btn-icon btn-sm" onclick="eliminarIncidente('${inc.id}','${jugadorId}')">🗑️</button></td>
+  </tr>`).join('');
+
+  openModal(`
+  <div class="modal-header">
+    <span class="modal-title">📁 Expediente — ${esc(j.nombre)}</span>
+    <button class="btn-icon" onclick="closeModal()">✕</button>
+  </div>
+
+  <!-- TABS -->
+  <div class="tabs" style="margin-bottom:16px;flex-wrap:wrap">
+    <div class="tab active" id="etab-datos" onclick="switchExpTab('datos')">👤 Datos</div>
+    <div class="tab" id="etab-medico" onclick="switchExpTab('medico')">🏥 Médico</div>
+    <div class="tab" id="etab-asistencia" onclick="switchExpTab('asistencia')">📅 Asistencia</div>
+    <div class="tab" id="etab-incidentes" onclick="switchExpTab('incidentes')">⚠️ Incidentes</div>
+    <div class="tab" id="etab-stats" onclick="switchExpTab('stats')">📊 Stats</div>
+    <div class="tab" id="etab-docs" onclick="switchExpTab('docs')">📄 Docs</div>
+  </div>
+
+  <!-- TAB: DATOS PERSONALES -->
+  <div id="etab-content-datos">
+    <div class="form-grid">
+      <div class="form-group"><label>Nombre completo</label><input id="ep-nombre" value="${esc(j.nombre||'')}"></div>
+      <div class="form-group"><label>Fecha de nacimiento</label><input id="ep-fnac" type="date" value="${j.fnac||''}"></div>
+      <div class="form-group"><label>CURP</label><input id="ep-curp" value="${esc(exp?.curp||'')}" placeholder="CURP del jugador"></div>
+      <div class="form-group"><label>NSS (Seguro Social)</label><input id="ep-nss" value="${esc(exp?.nss||'')}" placeholder="Número de seguro"></div>
+      <div class="form-group"><label>Teléfono</label><input id="ep-tel" value="${esc(j.telefono||'')}"></div>
+      <div class="form-group"><label>Email</label><input id="ep-email" value="${esc(j.email||'')}"></div>
+      <div class="form-group"><label>Dirección</label><input id="ep-direccion" value="${esc(exp?.direccion||'')}"></div>
+      <div class="form-group"><label>Ciudad</label><input id="ep-ciudad" value="${esc(exp?.ciudad||'')}"></div>
+      <div class="form-group"><label>Tipo de sangre</label>
+        <select id="ep-sangre">
+          ${['','A+','A-','B+','B-','AB+','AB-','O+','O-'].map(t=>`<option${t===(exp?.tipoSangre||'')?'  selected':''}>${t}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group"><label>Seguro médico</label><input id="ep-seguro" value="${esc(exp?.seguro||'')}" placeholder="Compañía o número de póliza"></div>
+    </div>
+    <div style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;margin:16px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--border)">Contactos de Emergencia</div>
+    <div class="form-grid">
+      <div class="form-group"><label>Contacto 1 — Nombre</label><input id="ep-em1nombre" value="${esc(exp?.em1nombre||j.emergencia||'')}"></div>
+      <div class="form-group"><label>Contacto 1 — Teléfono</label><input id="ep-em1tel" value="${esc(exp?.em1tel||j.emergenciaTel||'')}"></div>
+      <div class="form-group"><label>Contacto 1 — Parentesco</label><input id="ep-em1rel" value="${esc(exp?.em1rel||'')}" placeholder="Padre, madre, cónyuge..."></div>
+      <div class="form-group"><label>Contacto 2 — Nombre</label><input id="ep-em2nombre" value="${esc(exp?.em2nombre||'')}"></div>
+      <div class="form-group"><label>Contacto 2 — Teléfono</label><input id="ep-em2tel" value="${esc(exp?.em2tel||'')}"></div>
+      <div class="form-group"><label>Contacto 2 — Parentesco</label><input id="ep-em2rel" value="${esc(exp?.em2rel||'')}"></div>
+    </div>
+    <div class="modal-footer"><button class="btn btn-primary" onclick="guardarExpedienteDatos('${jugadorId}')">💾 Guardar datos</button></div>
+  </div>
+
+  <!-- TAB: MÉDICO -->
+  <div id="etab-content-medico" style="display:none">
+    <div class="form-grid">
+      <div class="form-group" style="grid-column:1/-1"><label>Alergias conocidas</label>
+        <textarea id="ep-alergias" rows="2" placeholder="Medicamentos, alimentos, materiales...">${esc(exp?.alergias||j.medico||'')}</textarea>
+      </div>
+      <div class="form-group" style="grid-column:1/-1"><label>Condiciones médicas / enfermedades crónicas</label>
+        <textarea id="ep-condiciones" rows="2" placeholder="Diabetes, asma, hipertensión...">${esc(exp?.condiciones||'')}</textarea>
+      </div>
+      <div class="form-group" style="grid-column:1/-1"><label>Medicamentos actuales</label>
+        <textarea id="ep-medicamentos" rows="2" placeholder="Nombre del medicamento y dosis...">${esc(exp?.medicamentos||'')}</textarea>
+      </div>
+      <div class="form-group" style="grid-column:1/-1"><label>Lesiones previas relevantes</label>
+        <textarea id="ep-lesionesprev" rows="2" placeholder="Cirugías, fracturas, esguinces...">${esc(exp?.lesionesprev||'')}</textarea>
+      </div>
+      <div class="form-group"><label>Médico de cabecera</label><input id="ep-medico" value="${esc(exp?.medico||'')}" placeholder="Nombre del médico"></div>
+      <div class="form-group"><label>Tel. médico / clínica</label><input id="ep-medicotel" value="${esc(exp?.medicotel||'')}" placeholder="Teléfono"></div>
+      <div class="form-group"><label>Hospital de preferencia</label><input id="ep-hospital" value="${esc(exp?.hospital||'')}" placeholder="Hospital más cercano"></div>
+      <div class="form-group"><label>¿Puede recibir transfusiones?</label>
+        <select id="ep-transfusion">
+          ${['Sí','No','Consultar familiar'].map(o=>`<option${o===(exp?.transfusion||'Sí')?'  selected':''}>${o}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer"><button class="btn btn-primary" onclick="guardarExpedienteMedico('${jugadorId}')">💾 Guardar datos médicos</button></div>
+  </div>
+
+  <!-- TAB: ASISTENCIA -->
+  <div id="etab-content-asistencia" style="display:none">
+    <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+      <div style="background:var(--bg3);border-radius:8px;padding:12px 16px;text-align:center;flex:1">
+        <div style="font-size:24px;font-weight:700;color:${pctAsist>=80?'var(--green)':pctAsist>=60?'var(--gold)':'var(--accent)'}">${pctAsist}%</div>
+        <div style="font-size:11px;color:var(--text3)">Asistencia general</div>
+      </div>
+      <div style="background:var(--bg3);border-radius:8px;padding:12px 16px;text-align:center;flex:1">
+        <div style="font-size:24px;font-weight:700;color:var(--green)">${presentes}</div>
+        <div style="font-size:11px;color:var(--text3)">Presente</div>
+      </div>
+      <div style="background:var(--bg3);border-radius:8px;padding:12px 16px;text-align:center;flex:1">
+        <div style="font-size:24px;font-weight:700;color:var(--accent)">${ausentes}</div>
+        <div style="font-size:11px;color:var(--text3)">Ausente</div>
+      </div>
+      <div style="background:var(--bg3);border-radius:8px;padding:12px 16px;text-align:center;flex:1">
+        <div style="font-size:24px;font-weight:700;color:var(--gold)">${justificados}</div>
+        <div style="font-size:11px;color:var(--text3)">Justificado</div>
+      </div>
+    </div>
+    ${sesRows
+      ? `<div class="table-wrap" style="max-height:320px;overflow-y:auto"><table>
+          <thead><tr><th>Fecha</th><th>Tipo</th><th>Estado</th><th>Nota</th><th>Cambiar</th></tr></thead>
+          <tbody>${sesRows}</tbody>
+        </table></div>`
+      : '<div style="padding:24px;text-align:center;color:var(--text3)">Sin sesiones registradas aún.<br>Usa "Pasar lista" para agregar sesiones.</div>'}
+  </div>
+
+  <!-- TAB: INCIDENTES -->
+  <div id="etab-content-incidentes" style="display:none">
+    <div style="margin-bottom:12px">
+      <button class="btn btn-sm" style="background:var(--accent);color:#fff" onclick="modalNuevoIncidente('${jugadorId}')">+ Registrar incidente</button>
+    </div>
+    ${incRows
+      ? `<div class="table-wrap" style="max-height:340px;overflow-y:auto"><table>
+          <thead><tr><th>Fecha</th><th>Tipo</th><th>Descripción</th><th>Tratamiento</th><th>Días baja</th><th></th></tr></thead>
+          <tbody>${incRows}</tbody>
+        </table></div>`
+      : '<div style="padding:24px;text-align:center;color:var(--text3)">Sin incidentes registrados. ✅</div>'}
+  </div>
+
+  <!-- TAB: STATS -->
+  <div id="etab-content-stats" style="display:none">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;margin-bottom:20px">
+      ${[
+        ['Goles',j.goles||0,'var(--accent)'],
+        ['Asistencias',j.asistencias||0,'var(--blue)'],
+        ['T. Amarillas',j.tarjetas_a||0,'#f39c12'],
+        ['T. Rojas',j.tarjetas_r||0,'#e74c3c'],
+      ].map(([lbl,val,col])=>`<div style="background:var(--bg3);border-radius:8px;padding:14px;text-align:center">
+        <div style="font-size:28px;font-weight:700;color:${col}">${val}</div>
+        <div style="font-size:11px;color:var(--text3)">${lbl}</div>
+      </div>`).join('')}
+    </div>
+    <div style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;margin-bottom:10px">Actualizar estadísticas</div>
+    <div class="form-grid">
+      <div class="form-group"><label>Goles</label><input id="ep-goles" type="number" min="0" value="${j.goles||0}"></div>
+      <div class="form-group"><label>Asistencias</label><input id="ep-asist" type="number" min="0" value="${j.asistencias||0}"></div>
+      <div class="form-group"><label>Tarjetas amarillas</label><input id="ep-ta" type="number" min="0" value="${j.tarjetas_a||0}"></div>
+      <div class="form-group"><label>Tarjetas rojas</label><input id="ep-tr" type="number" min="0" value="${j.tarjetas_r||0}"></div>
+    </div>
+    <div class="modal-footer"><button class="btn btn-primary" onclick="guardarStats('${jugadorId}')">💾 Guardar estadísticas</button></div>
+  </div>
+
+  <!-- TAB: DOCUMENTOS -->
+  <div id="etab-content-docs" style="display:none">
+    <div style="display:grid;gap:12px;margin-bottom:20px">
+      <div style="background:var(--bg3);border-radius:8px;padding:14px 16px;display:flex;align-items:center;justify-content:space-between">
+        <div><div style="font-weight:600;font-size:13px">📝 Waiver / Carta responsiva</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">${exp?.waiverFecha?'Firmado el '+fmt(exp.waiverFecha):'Pendiente de firma'}</div>
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="ep-waiver" ${exp?.waiverFirmado?'checked':''} style="width:16px;height:16px;accent-color:var(--green)">
+          <span style="font-size:13px">${exp?.waiverFirmado?'Firmado ✅':'Marcar firmado'}</span>
+        </label>
+      </div>
+      <div style="background:var(--bg3);border-radius:8px;padding:14px 16px;display:flex;align-items:center;justify-content:space-between">
+        <div><div style="font-weight:600;font-size:13px">🪪 Identificación oficial</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">${exp?.idVerificado?'Verificada ✅':'No verificada'}</div>
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="ep-idver" ${exp?.idVerificado?'checked':''} style="width:16px;height:16px;accent-color:var(--green)">
+          <span style="font-size:13px">${exp?.idVerificado?'Verificada ✅':'Marcar verificada'}</span>
+        </label>
+      </div>
+      <div style="background:var(--bg3);border-radius:8px;padding:14px 16px;display:flex;align-items:center;justify-content:space-between">
+        <div><div style="font-weight:600;font-size:13px">📸 Foto de perfil</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">${exp?.fotoUrl?'URL registrada':'Sin foto'}</div>
+        </div>
+        <input id="ep-foto" placeholder="URL de foto" value="${esc(exp?.fotoUrl||'')}"
+          style="background:var(--bg2);border:1px solid var(--border2);border-radius:6px;padding:6px 10px;color:var(--text);font-size:12px;width:200px">
+      </div>
+    </div>
+    <div class="form-group"><label>Notas generales del expediente</label>
+      <textarea id="ep-notasexp" rows="3" placeholder="Observaciones, comentarios del entrenador...">${esc(exp?.notasExp||'')}</textarea>
+    </div>
+    <div class="modal-footer"><button class="btn btn-primary" onclick="guardarDocs('${jugadorId}')">💾 Guardar documentos</button></div>
+  </div>
+  `);
+};
+
+// ── TAB SWITCHER ──────────────────────────────────────────────
+window.switchExpTab = function(tab){
+  ['datos','medico','asistencia','incidentes','stats','docs'].forEach(t=>{
+    document.getElementById('etab-'+t)?.classList.toggle('active', t===tab);
+    const c=document.getElementById('etab-content-'+t);
+    if(c) c.style.display = t===tab ? 'block' : 'none';
+  });
+};
+
+// ── SAVE FUNCTIONS ────────────────────────────────────────────
+window.guardarExpedienteDatos = async function(jugadorId){
+  const data={
+    jugadorId,
+    curp:document.getElementById('ep-curp').value,
+    nss:document.getElementById('ep-nss').value,
+    direccion:document.getElementById('ep-direccion').value,
+    ciudad:document.getElementById('ep-ciudad').value,
+    tipoSangre:document.getElementById('ep-sangre').value,
+    seguro:document.getElementById('ep-seguro').value,
+    em1nombre:document.getElementById('ep-em1nombre').value,
+    em1tel:document.getElementById('ep-em1tel').value,
+    em1rel:document.getElementById('ep-em1rel').value,
+    em2nombre:document.getElementById('ep-em2nombre').value,
+    em2tel:document.getElementById('ep-em2tel').value,
+    em2rel:document.getElementById('ep-em2rel').value,
+    updatedAt:new Date().toISOString()
+  };
+  // Also update jugador name/tel/email
+  await updateDoc(doc(db,'jugadores',jugadorId),{
+    nombre:document.getElementById('ep-nombre').value,
+    telefono:document.getElementById('ep-tel').value,
+    email:document.getElementById('ep-email').value,
+    fnac:document.getElementById('ep-fnac').value
+  });
+  await upsertExpediente(jugadorId, data);
+  notify('Datos personales guardados ✅');
+};
+
+window.guardarExpedienteMedico = async function(jugadorId){
+  const data={
+    jugadorId,
+    alergias:document.getElementById('ep-alergias').value,
+    condiciones:document.getElementById('ep-condiciones').value,
+    medicamentos:document.getElementById('ep-medicamentos').value,
+    lesionesprev:document.getElementById('ep-lesionesprev').value,
+    medico:document.getElementById('ep-medico').value,
+    medicotel:document.getElementById('ep-medicotel').value,
+    hospital:document.getElementById('ep-hospital').value,
+    transfusion:document.getElementById('ep-transfusion').value,
+    updatedAt:new Date().toISOString()
+  };
+  await upsertExpediente(jugadorId, data);
+  notify('Datos médicos guardados ✅');
+};
+
+window.guardarStats = async function(jugadorId){
+  await updateDoc(doc(db,'jugadores',jugadorId),{
+    goles:parseInt(document.getElementById('ep-goles').value)||0,
+    asistencias:parseInt(document.getElementById('ep-asist').value)||0,
+    tarjetas_a:parseInt(document.getElementById('ep-ta').value)||0,
+    tarjetas_r:parseInt(document.getElementById('ep-tr').value)||0
+  });
+  notify('Estadísticas guardadas ✅');
+};
+
+window.guardarDocs = async function(jugadorId){
+  const waiverFirmado=document.getElementById('ep-waiver').checked;
+  const data={
+    jugadorId,
+    waiverFirmado,
+    waiverFecha: waiverFirmado ? (getExpediente(jugadorId)?.waiverFecha||new Date().toISOString().split('T')[0]) : null,
+    idVerificado:document.getElementById('ep-idver').checked,
+    fotoUrl:document.getElementById('ep-foto').value,
+    notasExp:document.getElementById('ep-notasexp').value,
+    updatedAt:new Date().toISOString()
+  };
+  await upsertExpediente(jugadorId, data);
+  notify('Documentos guardados ✅');
+};
+
+// Helper: upsert expediente doc
+async function upsertExpediente(jugadorId, data){
+  const existing=DB.expedientes.find(e=>e.jugadorId===jugadorId);
+  if(existing){
+    await updateDoc(doc(db,'expedientes',existing.id), data);
+  } else {
+    await addDoc(COL.expedientes(), {...data, creadoEn:new Date().toISOString()});
+  }
+}
+
+// ── ASISTENCIA ────────────────────────────────────────────────
+window.cambiarAsistencia = async function(jugadorId, sesionId, estado){
+  const existing=DB.asistencias.find(a=>a.jugadorId===jugadorId&&a.sesionId===sesionId);
+  try{
+    if(existing){
+      await updateDoc(doc(db,'asistencias',existing.id),{estado,updatedAt:new Date().toISOString()});
+    } else {
+      const sesInfo=DB.asistencias.find(a=>a.sesionId===sesionId);
+      await addDoc(COL.asistencias(),{
+        jugadorId,sesionId,estado,
+        fecha:sesInfo?.fecha||'',tipo:sesInfo?.tipo||'',
+        nota:'',updatedAt:new Date().toISOString()
+      });
+    }
+    notify('Asistencia actualizada');
+  }catch(e){ notify('Error: '+e.message,'error'); }
+};
+
+// ── PASAR LISTA (crear sesión y marcar todos) ─────────────────
+window.modalListaAsistencia = function(){
+  const eqOpts=DB.equipos.map(e=>`<option value="${e.id}">${esc(e.nombre)}</option>`).join('');
+  openModal(`
+    <div class="modal-header"><span class="modal-title">📋 Pasar lista</span><button class="btn-icon" onclick="closeModal()">✕</button></div>
+    <div class="form-grid" style="margin-bottom:16px">
+      <div class="form-group"><label>Fecha *</label><input id="asis-fecha" type="date" value="${new Date().toISOString().split('T')[0]}"></div>
+      <div class="form-group"><label>Tipo de sesión</label>
+        <select id="asis-tipo">
+          <option>Entrenamiento</option><option>Partido</option><option>Práctica</option><option>Reunión</option><option>Evento</option>
+        </select>
+      </div>
+      <div class="form-group" style="grid-column:1/-1"><label>Equipo</label>
+        <select id="asis-equipo" onchange="filtrarListaJugadores(this.value)">
+          <option value="">Todos los equipos</option>${eqOpts}
+        </select>
+      </div>
+    </div>
+    <div id="asis-jugadores-list" style="max-height:380px;overflow-y:auto"></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="guardarLista()">💾 Guardar lista</button>
+    </div>`);
+  filtrarListaJugadores('');
+};
+
+window.filtrarListaJugadores = function(eqId){
+  const jugs = eqId ? DB.jugadores.filter(j=>j.equipoId===eqId) : DB.jugadores;
+  const el = document.getElementById('asis-jugadores-list'); if(!el) return;
+  if(!jugs.length){
+    el.innerHTML='<div style="padding:20px;text-align:center;color:var(--text3)">Sin jugadores en este equipo</div>';
+    return;
+  }
+  el.innerHTML=`
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;margin-bottom:8px;border-bottom:1px solid var(--border)">
+      <span style="font-size:12px;color:var(--text3)">${jugs.length} jugadores</span>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-sm btn-secondary" onclick="marcarTodos('Presente')">✅ Todos presentes</button>
+        <button class="btn btn-sm btn-secondary" onclick="marcarTodos('Ausente')">❌ Todos ausentes</button>
+      </div>
+    </div>
+    ${jugs.map(j=>{
+      const eq=getEquipo(j.equipoId);
+      return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 4px;border-bottom:1px solid var(--border)">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="avatar" style="width:28px;height:28px;font-size:10px">${(j.nombre||'?').substring(0,2).toUpperCase()}</span>
+          <div><div style="font-size:13px;font-weight:600">${esc(j.nombre)}</div>
+          <div style="font-size:11px;color:var(--text3)">${eq?esc(eq.nombre):'—'}</div></div>
+        </div>
+        <select data-jugador="${j.id}" class="asis-estado"
+          style="background:var(--bg3);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-size:12px;padding:4px 8px">
+          <option value="Presente">✅ Presente</option>
+          <option value="Ausente">❌ Ausente</option>
+          <option value="Justificado">⚠️ Justificado</option>
+        </select>
+      </div>`;
+    }).join('')}`;
+};
+
+window.marcarTodos = function(estado){
+  document.querySelectorAll('.asis-estado').forEach(s=>s.value=estado);
+};
+
+window.guardarLista = async function(){
+  const fecha=document.getElementById('asis-fecha').value;
+  const tipo=document.getElementById('asis-tipo').value;
+  if(!fecha){ notify('Selecciona una fecha','error'); return; }
+  const sesionId='ses_'+fecha.replace(/-/g,'')+'_'+Date.now().toString(36);
+  const selects=document.querySelectorAll('.asis-estado');
+  if(!selects.length){ notify('Sin jugadores para registrar','warning'); return; }
+  const batch=writeBatch(db);
+  selects.forEach(s=>{
+    const jugadorId=s.dataset.jugador;
+    const existing=DB.asistencias.find(a=>a.jugadorId===jugadorId&&a.fecha===fecha&&a.tipo===tipo);
+    if(existing){
+      batch.update(doc(db,'asistencias',existing.id),{estado:s.value,sesionId,updatedAt:new Date().toISOString()});
+    } else {
+      batch.set(doc(COL.asistencias()),{jugadorId,sesionId,fecha,tipo,estado:s.value,nota:'',creadoEn:new Date().toISOString()});
+    }
+  });
+  try{
+    await batch.commit();
+    closeModal();
+    notify(`Lista guardada — ${selects.length} jugadores registrados ✅`);
+  }catch(e){ notify('Error: '+e.message,'error'); }
+};
+
+// ── INCIDENTES ────────────────────────────────────────────────
+window.modalNuevoIncidente = function(jugadorId){
+  const j=DB.jugadores.find(x=>x.id===jugadorId); if(!j) return;
+  openModal(`
+    <div class="modal-header"><span class="modal-title">⚠️ Registrar incidente — ${esc(j.nombre)}</span><button class="btn-icon" onclick="closeModal()">✕</button></div>
+    <div class="form-grid">
+      <div class="form-group"><label>Fecha *</label><input id="inc-fecha" type="date" value="${new Date().toISOString().split('T')[0]}"></div>
+      <div class="form-group"><label>Tipo *</label>
+        <select id="inc-tipo">
+          <option value="Lesion">🤕 Lesión</option>
+          <option value="Accidente">⚡ Accidente</option>
+          <option value="Enfermedad">🤒 Enfermedad</option>
+          <option value="Incidente">⚠️ Incidente general</option>
+          <option value="Sancion">🟥 Sanción / Disciplina</option>
+        </select>
+      </div>
+      <div class="form-group" style="grid-column:1/-1"><label>Descripción *</label>
+        <textarea id="inc-desc" rows="3" placeholder="Describe qué ocurrió, cómo y dónde..."></textarea>
+      </div>
+      <div class="form-group" style="grid-column:1/-1"><label>Tratamiento / Acción tomada</label>
+        <textarea id="inc-trat" rows="2" placeholder="Primeros auxilios, médico consultado, medicación..."></textarea>
+      </div>
+      <div class="form-group"><label>Días de baja estimados</label><input id="inc-baja" type="number" min="0" value="0" placeholder="0"></div>
+      <div class="form-group"><label>Parte del cuerpo afectada</label><input id="inc-parte" placeholder="Rodilla, tobillo, hombro..."></div>
+      <div class="form-group"><label>Gravedad</label>
+        <select id="inc-gravedad">
+          <option>Leve</option><option>Moderada</option><option>Grave</option>
+        </select>
+      </div>
+      <div class="form-group"><label>¿Requirió hospitalización?</label>
+        <select id="inc-hosp"><option>No</option><option>Sí</option></select>
+      </div>
+      <div class="form-group" style="grid-column:1/-1"><label>Seguimiento / Notas adicionales</label>
+        <textarea id="inc-notas" rows="2" placeholder="Alta médica, estado actual, fecha esperada de regreso..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="abrirExpediente('${jugadorId}');switchExpTab('incidentes')">Cancelar</button>
+      <button class="btn btn-primary" style="background:var(--accent)" onclick="guardarIncidente('${jugadorId}')">⚠️ Guardar incidente</button>
+    </div>`);
+};
+
+window.guardarIncidente = async function(jugadorId){
+  const desc=document.getElementById('inc-desc').value.trim();
+  if(!desc){ notify('La descripción es requerida','error'); return; }
+  try{
+    await addDoc(COL.incidentes(),{
+      jugadorId,
+      fecha:document.getElementById('inc-fecha').value,
+      tipo:document.getElementById('inc-tipo').value,
+      descripcion:desc,
+      tratamiento:document.getElementById('inc-trat').value,
+      diasBaja:parseInt(document.getElementById('inc-baja').value)||0,
+      parteAfectada:document.getElementById('inc-parte').value,
+      gravedad:document.getElementById('inc-gravedad').value,
+      hospitalizacion:document.getElementById('inc-hosp').value,
+      notas:document.getElementById('inc-notas').value,
+      creadoEn:new Date().toISOString()
+    });
+    notify('Incidente registrado ✅');
+    abrirExpediente(jugadorId);
+    switchExpTab('incidentes');
+  }catch(e){ notify('Error: '+e.message,'error'); }
+};
+
+window.eliminarIncidente = async function(incId, jugadorId){
+  if(!confirm('¿Eliminar este incidente?')) return;
+  try{
+    await deleteDoc(doc(db,'incidentes',incId));
+    notify('Incidente eliminado');
+    abrirExpediente(jugadorId);
+    switchExpTab('incidentes');
+  }catch(e){ notify('Error','error'); }
 };
 
 // ── INIT ──
