@@ -147,20 +147,24 @@ td{padding:9px 12px;color:var(--text);vertical-align:middle}
     </div>
     <div class="sidebar-nav">
       <div class="nav-section">Principal</div>
-      <div class="nav-item active" onclick="nav('dashboard')"><span class="nav-icon">📊</span>Dashboard</div>
-      <div class="nav-item" onclick="nav('equipos')"><span class="nav-icon">🛡️</span>Equipos</div>
-      <div class="nav-item" onclick="nav('jugadores')"><span class="nav-icon">👤</span>Jugadores</div>
+      <div class="nav-item active" onclick="nav('dashboard')"><span class="nav-icon">📊</span><span data-i18n="nav_dashboard">Dashboard</span></div>
+      <div class="nav-item" onclick="nav('equipos')"><span class="nav-icon">🛡️</span><span data-i18n="nav_equipos">Equipos</span></div>
+      <div class="nav-item" onclick="nav('jugadores')"><span class="nav-icon">👤</span><span data-i18n="nav_jugadores">'+t('col_players')+'</span></div>
       <div class="nav-section">Competencia</div>
-      <div class="nav-item" onclick="nav('calendario')"><span class="nav-icon">📅</span>Calendario</div>
-      <div class="nav-item" onclick="nav('standings')"><span class="nav-icon">🏅</span>Standings</div>
-      <div class="nav-item" onclick="nav('goleadores')"><span class="nav-icon">🎯</span>Goleadores</div>
-      <div class="nav-item" onclick="nav('expedientes')"><span class="nav-icon">📁</span>Expedientes</div>
+      <div class="nav-item" onclick="nav('calendario')"><span class="nav-icon">📅</span><span data-i18n="nav_calendario">Calendario</span></div>
+      <div class="nav-item" onclick="nav('standings')"><span class="nav-icon">🏅</span><span data-i18n="nav_standings">Standings</span></div>
+      <div class="nav-item" onclick="nav('goleadores')"><span class="nav-icon">🎯</span><span data-i18n="nav_goleadores">Goleadores</span></div>
+      <div class="nav-item" onclick="nav('expedientes')"><span class="nav-icon">📁</span><span data-i18n="nav_expedientes">Expedientes</span></div>
       <div class="nav-section">Admin</div>
-      <div class="nav-item" onclick="nav('pagos')"><span class="nav-icon">💰</span>Pagos</div>
-      <div class="nav-item" onclick="nav('config')"><span class="nav-icon">⚙️</span>Configuración</div>
+      <div class="nav-item" onclick="nav('pagos')"><span class="nav-icon">💰</span><span data-i18n="nav_pagos">Pagos</span></div>
+      <div class="nav-item" onclick="nav('config')"><span class="nav-icon">⚙️</span><span data-i18n="nav_config">Configuración</span></div>
     </div>
-    <div class="sidebar-footer">
+    <div class="sidebar-footer" style="display:flex;justify-content:space-between;align-items:center">
       <div class="sync-indicator"><span class="sync-dot"></span><span id="sync-status">Conectado</span></div>
+      <button id="lang-toggle" onclick="toggleLang()" title="Switch to English"
+        style="background:var(--card2);border:1px solid var(--border2);border-radius:6px;padding:3px 8px;color:var(--text);font-size:11px;font-weight:700;cursor:pointer">
+        🇺🇸 EN
+      </button>
     </div>
   </div>
   <div id="main">
@@ -189,6 +193,518 @@ import {
   getFirestore, collection, doc, getDocs, getDoc, setDoc, addDoc,
   updateDoc, deleteDoc, onSnapshot, query, orderBy, writeBatch, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+
+// ══════════════════════════════════════════════════════════
+// ── i18n SYSTEM ─────────────────────────────────────────
+// ══════════════════════════════════════════════════════════
+const TRANSLATIONS = {
+  es: {
+  "nav_dashboard": "Dashboard",
+  "nav_equipos": "Equipos",
+  "nav_jugadores": "Jugadores",
+  "nav_calendario": "Calendario",
+  "nav_standings": "Standings",
+  "nav_goleadores": "Goleadores",
+  "nav_pagos": "Pagos",
+  "nav_config": "Configuración",
+  "nav_expedientes": "Expedientes",
+  "sub_dashboard": "Resumen general de la liga",
+  "sub_equipos": "Registro y gestión de equipos",
+  "sub_jugadores": "Registro de jugadores por equipo",
+  "sub_calendario": "Jornadas y resultados",
+  "sub_standings": "Clasificación automática",
+  "sub_goleadores": "Estadísticas individuales",
+  "sub_pagos": "Inscripciones y pagos",
+  "sub_config": "Parámetros de la liga",
+  "sub_expedientes": "Historial completo por jugador",
+  "btn_save": "Guardar",
+  "btn_cancel": "Cancelar",
+  "btn_delete": "Eliminar",
+  "btn_edit": "Editar",
+  "btn_new": "Nuevo",
+  "btn_add": "Agregar",
+  "btn_import": "Importar",
+  "btn_export": "Exportar",
+  "btn_generate": "Generar",
+  "btn_close": "Cerrar",
+  "btn_confirm": "Confirmar",
+  "btn_register": "Registrar",
+  "btn_search": "Buscar",
+  "kpi_teams": "Equipos",
+  "kpi_players": "Jugadores",
+  "kpi_matches": "Partidos",
+  "kpi_pending": "Pendientes",
+  "kpi_collected": "Recaudado",
+  "kpi_max": "de {0} máx",
+  "kpi_played": "{0} jugados",
+  "dash_top5": "🥇 Top 5 Standings",
+  "dash_recent": "⚽ Últimos resultados",
+  "dash_upcoming": "📅 Próximos partidos",
+  "dash_payments": "💰 Pagos",
+  "dash_no_data": "Sin datos",
+  "dash_no_results": "Sin resultados aún",
+  "dash_no_matches": "Sin partidos programados",
+  "teams_new": "+ Nuevo equipo",
+  "teams_import": "📥 Importar lista",
+  "col_team": "Equipo",
+  "col_coach": "Entrenador",
+  "col_phone": "Teléfono",
+  "col_players": "Jugadores",
+  "col_payment": "Pago",
+  "col_status": "Estado",
+  "col_actions": "Acciones",
+  "team_name": "Nombre del equipo",
+  "team_category": "Categoría",
+  "team_city": "Ciudad",
+  "team_color": "Color",
+  "team_notes": "Notas",
+  "team_email": "Email",
+  "team_active": "Activo",
+  "team_inactive": "Inactivo",
+  "team_no_teams": "Sin equipos registrados",
+  "team_import_ph": "Un nombre por línea",
+  "players_new": "+ Nuevo jugador",
+  "col_number": "#",
+  "col_position": "Posición",
+  "col_goals": "Goles",
+  "col_assists": "Asist.",
+  "col_cards": "Tarjetas",
+  "player_name": "Nombre completo",
+  "player_dob": "Fecha nacimiento",
+  "player_no_team": "Sin equipo",
+  "player_all_teams": "Todos los equipos",
+  "player_no_players": "Sin jugadores",
+  "cal_generate": "🔄 Generar calendario",
+  "cal_confirm_gen": t('cal_confirm_gen'),
+  "cal_all_rounds": "Todas las jornadas",
+  "cal_all_teams": "Todos los equipos",
+  "cal_total": "{0} partidos totales",
+  "cal_played": "jugados",
+  "cal_final": "Final",
+  "cal_pending": "Pend.",
+  "cal_no_matches": "Registra equipos y genera el calendario",
+  "col_mp": "PJ",
+  "col_w": "PG",
+  "col_d": "PE",
+  "col_l": "PP",
+  "col_gf": "GF",
+  "col_ga": "GC",
+  "col_gd": "Dif",
+  "col_pts": "Pts",
+  "col_wpct": "%Vic",
+  "stand_no_data": "Sin datos. Ingresa resultados en el Calendario.",
+  "pay_new": "+ Registrar pago",
+  "pay_tab_teams": "🛡️ Por equipo",
+  "pay_tab_players": "👤 Por jugador",
+  "pay_tab_all": "📋 Todos los pagos",
+  "pay_total_collected": "Total cobrado",
+  "pay_registrations": "Inscripciones",
+  "pay_extras": "Artículos / extras",
+  "pay_pending_reg": "Inscripciones pendientes",
+  "pay_quota": "Cuota inscr.",
+  "pay_paid": "Pagado",
+  "pay_balance": "Pendiente",
+  "pay_progress": "Progreso",
+  "pay_extras_col": "Extras",
+  "pay_action": "Acción",
+  "pay_concept": "Concepto",
+  "pay_amount": "Monto",
+  "pay_method": "Método",
+  "pay_ref": "Referencia",
+  "pay_date": "Fecha",
+  "pay_state_paid": "Pagado",
+  "pay_state_partial": "Parcial",
+  "pay_state_pending": "Pendiente",
+  "pay_concept_ins": "🏆 Inscripción",
+  "pay_concept_uni": "👕 Uniforme",
+  "pay_concept_eq": "⚙️ Equipo especial",
+  "pay_concept_bp": "🎒 Backpack",
+  "pay_concept_fine": "⚠️ Multa / penalidad",
+  "pay_concept_other": "💰 Otro",
+  "pay_size": "Cantidad / talla",
+  "pay_receipt": "Referencia / comprobante",
+  "pay_notes": "Notas",
+  "pay_preview": "Selecciona concepto y monto para ver el resumen",
+  "rec_pass_list": "📋 Pasar lista",
+  "rec_attendance": "Asistencia",
+  "rec_incidents": "Incidentes",
+  "rec_waiver": "Waiver",
+  "rec_record": "Expediente",
+  "rec_complete": "Completo",
+  "rec_incomplete": "Incompleto",
+  "rec_signed": "✅ Firmado",
+  "rec_pending_waiver": "❌ Pendiente",
+  "rec_sessions": "sesiones",
+  "rec_no_players": "Sin jugadores registrados",
+  "rec_click_hint": "Haz clic en cualquier fila para ver el expediente completo",
+  "cfg_league_data": "🏆 Datos de la Liga",
+  "cfg_league_name": "Nombre de la liga",
+  "cfg_season": "Temporada",
+  "cfg_format": "Formato",
+  "cfg_max_teams": "Máx. equipos",
+  "cfg_start_date": "Fecha inicio",
+  "cfg_currency": "Moneda",
+  "cfg_scoring": "⚽ Puntuación",
+  "cfg_pts_win": "Pts. Victoria",
+  "cfg_pts_draw": "Pts. Empate",
+  "cfg_pts_loss": "Pts. Derrota",
+  "cfg_duration": "Duración (min)",
+  "cfg_sat_start": "Hora inicio Sáb",
+  "cfg_sun_start": "Hora inicio Dom",
+  "cfg_finance": "💰 Finanzas & Artículos",
+  "cfg_reg_fee": "🏆 Inscripción por equipo",
+  "cfg_partial": "Pago parcial (inscripción)",
+  "cfg_uniform": "👕 Precio uniforme",
+  "cfg_equipment": "⚙️ Equipo especial",
+  "cfg_backpack": "🎒 Precio backpack",
+  "cfg_fields": "🏟️ Campos",
+  "cfg_add_field": "+ Agregar campo",
+  "cfg_save": "💾 Guardar configuración",
+  "pub_home": "Inicio",
+  "pub_register": "Registro",
+  "pub_scores": "Scores",
+  "pub_season": "Temporada 2025 · Fremont, CA",
+  "pub_tagline": "Flag Football · La liga más competitiva del área",
+  "pub_register_now": "📋 Registrarse ahora",
+  "pub_see_scores": "⚽ Ver scores",
+  "pub_teams_reg": "Equipos registrados",
+  "pub_players_reg": "Jugadores inscritos",
+  "pub_matches_sched": "Partidos programados",
+  "pub_matches_played": "Partidos jugados",
+  "pub_standings": "🏅 Tabla de Posiciones",
+  "pub_realtime": "Actualizada en tiempo real",
+  "pub_upcoming": "📅 Próximos partidos",
+  "pub_this_week": "Esta semana",
+  "pub_last_results": "⚽ Últimos resultados",
+  "pub_recent": "Resultados recientes",
+  "pub_portal": "📋 Portal de Registro",
+  "pub_select_type": "Selecciona el tipo de registro",
+  "pub_reg_team": "Registrar Equipo",
+  "pub_reg_team_desc": "Inscribe tu equipo en la liga. Necesitarás el nombre del equipo, datos del entrenador y categoría.",
+  "pub_reg_team_cta": "Registrar equipo →",
+  "pub_reg_player": "Registrar Jugador",
+  "pub_reg_player_desc": "Inscribe a un jugador en un equipo existente. El equipo debe estar registrado previamente.",
+  "pub_reg_player_cta": "Registrar jugador →",
+  "pub_scores_title": "⚽ Scores & Resultados",
+  "pub_live": "TIEMPO REAL",
+  "pub_synced": "Resultados sincronizados automáticamente",
+  "pub_filter_all": "Todos",
+  "pub_filter_pend": "Pendientes",
+  "pub_filter_final": "Finales",
+  "pub_form_team_data": "Datos del Equipo",
+  "pub_form_coach": "Datos del Entrenador",
+  "pub_form_extra": "Información adicional",
+  "pub_form_how": "¿Cómo se enteraron de la liga?",
+  "pub_form_notes": "Notas o comentarios",
+  "pub_form_register_team": "✅ Registrar Equipo",
+  "pub_form_personal": "Datos Personales",
+  "pub_form_sports": "Datos Deportivos",
+  "pub_form_emergency": "Emergencia",
+  "pub_form_first_name": "Nombre(s)",
+  "pub_form_last_name": "Apellido(s)",
+  "pub_form_dob": "Fecha de nacimiento",
+  "pub_form_phone": "Teléfono / WhatsApp",
+  "pub_form_jersey": "Número de camiseta",
+  "pub_form_position": "Posición preferida",
+  "pub_form_experience": "¿Jugaste flag football antes?",
+  "pub_form_emerg_name": "Contacto de emergencia",
+  "pub_form_emerg_tel": "Teléfono emergencia",
+  "pub_form_medical": "Condición médica (opcional)",
+  "pub_form_register_player": "✅ Registrar Jugador",
+  "pub_disclaimer": "Al registrarse, acepta cumplir con el reglamento de la liga Fremont Osos Flag Football.",
+  "pub_success_team_title": "¡Equipo registrado exitosamente!",
+  "pub_success_team_msg": "Tu equipo ha sido inscrito en la liga Fremont Osos Flag Football. El coordinador se pondrá en contacto pronto.",
+  "pub_success_player_title": "¡Jugador registrado!",
+  "pub_success_player_msg": "Tu registro fue enviado correctamente. El entrenador de tu equipo recibirá la confirmación.",
+  "pub_register_another_team": "Registrar otro equipo",
+  "pub_register_another_player": "Registrar otro jugador",
+  "pub_view_scores": "Ver scores",
+  "pub_saving": "Guardando...",
+  "pub_no_data": "Sin datos aún",
+  "pub_loading": "Cargando...",
+  "pub_no_matches": "Sin partidos programados",
+  "pub_no_results": "Sin resultados aún",
+  "pub_local": "Local",
+  "pub_visitor": "Visitante",
+  "pub_draw": "· Empate"
+},
+  en: {
+  "nav_dashboard": "Dashboard",
+  "nav_equipos": "Teams",
+  "nav_jugadores": "Players",
+  "nav_calendario": "Schedule",
+  "nav_standings": "Standings",
+  "nav_goleadores": "Top Scorers",
+  "nav_pagos": "Payments",
+  "nav_config": "Settings",
+  "nav_expedientes": "Records",
+  "sub_dashboard": "League overview",
+  "sub_equipos": "Team registration & management",
+  "sub_jugadores": "Player registration by team",
+  "sub_calendario": "Schedule & results",
+  "sub_standings": "Automatic standings",
+  "sub_goleadores": "Individual statistics",
+  "sub_pagos": "Registrations & payments",
+  "sub_config": "League settings",
+  "sub_expedientes": "Full player records",
+  "btn_save": "Save",
+  "btn_cancel": "Cancel",
+  "btn_delete": "Delete",
+  "btn_edit": "Edit",
+  "btn_new": "New",
+  "btn_add": "Add",
+  "btn_import": "Import",
+  "btn_export": "Export",
+  "btn_generate": "Generate",
+  "btn_close": "Close",
+  "btn_confirm": "Confirm",
+  "btn_register": "Register",
+  "btn_search": "Search",
+  "kpi_teams": "Teams",
+  "kpi_players": "Players",
+  "kpi_matches": "Matches",
+  "kpi_pending": "Pending",
+  "kpi_collected": "Collected",
+  "kpi_max": "of {0} max",
+  "kpi_played": "{0} played",
+  "dash_top5": "🥇 Top 5 Standings",
+  "dash_recent": "⚽ Recent results",
+  "dash_upcoming": "📅 Upcoming matches",
+  "dash_payments": "💰 Payments",
+  "dash_no_data": "No data",
+  "dash_no_results": "No results yet",
+  "dash_no_matches": "No matches scheduled",
+  "teams_new": "+ New team",
+  "teams_import": "📥 Import list",
+  "col_team": "Team",
+  "col_coach": "Coach",
+  "col_phone": "Phone",
+  "col_players": "Players",
+  "col_payment": "Payment",
+  "col_status": "Status",
+  "col_actions": "Actions",
+  "team_name": "Team name",
+  "team_category": "Category",
+  "team_city": "City",
+  "team_color": "Color",
+  "team_notes": "Notes",
+  "team_email": "Email",
+  "team_active": "Active",
+  "team_inactive": "Inactive",
+  "team_no_teams": "No teams registered",
+  "team_import_ph": "One name per line",
+  "players_new": "+ New player",
+  "col_number": "#",
+  "col_position": "Position",
+  "col_goals": "Goals",
+  "col_assists": "Assists",
+  "col_cards": "Cards",
+  "player_name": "Full name",
+  "player_dob": "Date of birth",
+  "player_no_team": "No team",
+  "player_all_teams": "All teams",
+  "player_no_players": "No players",
+  "cal_generate": "🔄 Generate schedule",
+  "cal_confirm_gen": "Regenerate? Current results will be lost.",
+  "cal_all_rounds": "All rounds",
+  "cal_all_teams": "All teams",
+  "cal_total": "{0} total matches",
+  "cal_played": "played",
+  "cal_final": "Final",
+  "cal_pending": "Pend.",
+  "cal_no_matches": "Add teams and generate the schedule",
+  "col_mp": "MP",
+  "col_w": "W",
+  "col_d": "D",
+  "col_l": "L",
+  "col_gf": "GF",
+  "col_ga": "GA",
+  "col_gd": "GD",
+  "col_pts": "Pts",
+  "col_wpct": "%W",
+  "stand_no_data": "No data. Enter results in Schedule.",
+  "pay_new": "+ Register payment",
+  "pay_tab_teams": "🛡️ By team",
+  "pay_tab_players": "👤 By player",
+  "pay_tab_all": "📋 All payments",
+  "pay_total_collected": "Total collected",
+  "pay_registrations": "Registrations",
+  "pay_extras": "Items / extras",
+  "pay_pending_reg": "Pending registrations",
+  "pay_quota": "Reg. fee",
+  "pay_paid": "Paid",
+  "pay_balance": "Balance",
+  "pay_progress": "Progress",
+  "pay_extras_col": "Extras",
+  "pay_action": "Action",
+  "pay_concept": "Concept",
+  "pay_amount": "Amount",
+  "pay_method": "Method",
+  "pay_ref": "Reference",
+  "pay_date": "Date",
+  "pay_state_paid": "Paid",
+  "pay_state_partial": "Partial",
+  "pay_state_pending": "Pending",
+  "pay_concept_ins": "🏆 Registration",
+  "pay_concept_uni": "👕 Uniform",
+  "pay_concept_eq": "⚙️ Special equipment",
+  "pay_concept_bp": "🎒 Backpack",
+  "pay_concept_fine": "⚠️ Fine / penalty",
+  "pay_concept_other": "💰 Other",
+  "pay_size": "Qty / size",
+  "pay_receipt": "Reference / receipt",
+  "pay_notes": "Notes",
+  "pay_preview": "Select concept and amount to preview",
+  "rec_pass_list": "📋 Take attendance",
+  "rec_attendance": "Attendance",
+  "rec_incidents": "Incidents",
+  "rec_waiver": "Waiver",
+  "rec_record": "Record",
+  "rec_complete": "Complete",
+  "rec_incomplete": "Incomplete",
+  "rec_signed": "✅ Signed",
+  "rec_pending_waiver": "❌ Pending",
+  "rec_sessions": "sessions",
+  "rec_no_players": "No players registered",
+  "rec_click_hint": "Click any row to view the full record",
+  "cfg_league_data": "🏆 League Data",
+  "cfg_league_name": "League name",
+  "cfg_season": "Season",
+  "cfg_format": "Format",
+  "cfg_max_teams": "Max teams",
+  "cfg_start_date": "Start date",
+  "cfg_currency": "Currency",
+  "cfg_scoring": "⚽ Scoring",
+  "cfg_pts_win": "Pts. Win",
+  "cfg_pts_draw": "Pts. Draw",
+  "cfg_pts_loss": "Pts. Loss",
+  "cfg_duration": "Duration (min)",
+  "cfg_sat_start": "Sat start time",
+  "cfg_sun_start": "Sun start time",
+  "cfg_finance": "💰 Finances & Items",
+  "cfg_reg_fee": "🏆 Registration fee per team",
+  "cfg_partial": "Partial payment (registration)",
+  "cfg_uniform": "👕 Uniform price",
+  "cfg_equipment": "⚙️ Special equipment",
+  "cfg_backpack": "🎒 Backpack price",
+  "cfg_fields": "🏟️ Fields",
+  "cfg_add_field": "+ Add field",
+  "cfg_save": "💾 Save settings",
+  "pub_home": "Home",
+  "pub_register": "Register",
+  "pub_scores": "Scores",
+  "pub_season": "Season 2025 · Fremont, CA",
+  "pub_tagline": "Flag Football · The most competitive league in the area",
+  "pub_register_now": "📋 Register now",
+  "pub_see_scores": "⚽ View scores",
+  "pub_teams_reg": "Teams registered",
+  "pub_players_reg": "Players enrolled",
+  "pub_matches_sched": "Matches scheduled",
+  "pub_matches_played": "Matches played",
+  "pub_standings": "🏅 Standings",
+  "pub_realtime": "Updated in real time",
+  "pub_upcoming": "📅 Upcoming matches",
+  "pub_this_week": "This week",
+  "pub_last_results": "⚽ Recent results",
+  "pub_recent": "Recent results",
+  "pub_portal": "📋 Registration Portal",
+  "pub_select_type": "Select registration type",
+  "pub_reg_team": "Register Team",
+  "pub_reg_team_desc": "Register your team in the league. You will need the team name, coach info, and category.",
+  "pub_reg_team_cta": "Register team →",
+  "pub_reg_player": "Register Player",
+  "pub_reg_player_desc": "Register a player on an existing team. The team must already be registered.",
+  "pub_reg_player_cta": "Register player →",
+  "pub_scores_title": "⚽ Scores & Results",
+  "pub_live": "LIVE",
+  "pub_synced": "Results synced automatically",
+  "pub_filter_all": "All",
+  "pub_filter_pend": "Pending",
+  "pub_filter_final": "Finals",
+  "pub_form_team_data": "Team Data",
+  "pub_form_coach": "Coach Information",
+  "pub_form_extra": "Additional information",
+  "pub_form_how": "How did you hear about the league?",
+  "pub_form_notes": "Notes or comments",
+  "pub_form_register_team": "✅ Register Team",
+  "pub_form_personal": "Personal Information",
+  "pub_form_sports": "Sports Information",
+  "pub_form_emergency": "Emergency",
+  "pub_form_first_name": "First name(s)",
+  "pub_form_last_name": "Last name(s)",
+  "pub_form_dob": "Date of birth",
+  "pub_form_phone": "Phone / WhatsApp",
+  "pub_form_jersey": "Jersey number",
+  "pub_form_position": "Preferred position",
+  "pub_form_experience": "Have you played flag football before?",
+  "pub_form_emerg_name": "Emergency contact",
+  "pub_form_emerg_tel": "Emergency phone",
+  "pub_form_medical": "Medical condition (optional)",
+  "pub_form_register_player": "✅ Register Player",
+  "pub_disclaimer": "By registering, you agree to comply with the Fremont Osos Flag Football league rules.",
+  "pub_success_team_title": "Team registered successfully!",
+  "pub_success_team_msg": "Your team has been registered in the Fremont Osos Flag Football league. The coordinator will be in touch soon.",
+  "pub_success_player_title": "Player registered!",
+  "pub_success_player_msg": "Your registration was submitted successfully. Your team coach will receive confirmation.",
+  "pub_register_another_team": "Register another team",
+  "pub_register_another_player": "Register another player",
+  "pub_view_scores": "View scores",
+  "pub_saving": "Saving...",
+  "pub_no_data": "No data yet",
+  "pub_loading": "Loading...",
+  "pub_no_matches": "No matches scheduled",
+  "pub_no_results": "No results yet",
+  "pub_local": "Home",
+  "pub_visitor": "Away",
+  "pub_draw": "· Draw"
+}
+};
+
+let LANG = localStorage.getItem('leaguefff_lang') || 'es';
+
+function t(key, ...args) {
+  let str = (TRANSLATIONS[LANG] && TRANSLATIONS[LANG][key]) || (TRANSLATIONS['es'][key]) || key;
+  args.forEach((a, i) => { str = str.replace('{' + i + '}', a); });
+  return str;
+}
+
+function setLang(lang) {
+  LANG = lang;
+  localStorage.setItem('leaguefff_lang', lang);
+  // Update toggle button
+  const btn = document.getElementById('lang-toggle');
+  if (btn) {
+    btn.textContent = lang === 'es' ? '🇺🇸 EN' : '🇲🇽 ES';
+    btn.title = lang === 'es' ? 'Switch to English' : 'Cambiar a Español';
+  }
+  // Apply to static data-i18n elements
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.getAttribute('data-i18n');
+    el.textContent = t(key);
+  });
+  // Re-render current page
+  if (typeof currentPage !== 'undefined') {
+    const renders = {
+      dashboard: typeof renderDashboard !== 'undefined' ? renderDashboard : null,
+      equipos: typeof renderEquipos !== 'undefined' ? renderEquipos : null,
+      jugadores: typeof renderJugadores !== 'undefined' ? renderJugadores : null,
+      calendario: typeof renderCalendario !== 'undefined' ? renderCalendario : null,
+      standings: typeof renderStandings !== 'undefined' ? renderStandings : null,
+      goleadores: typeof renderGoleadores !== 'undefined' ? renderGoleadores : null,
+      pagos: typeof renderPagos !== 'undefined' ? renderPagos : null,
+      config: typeof renderConfig !== 'undefined' ? renderConfig : null,
+      expedientes: typeof renderExpedientes !== 'undefined' ? renderExpedientes : null,
+    };
+    const fn = renders[currentPage];
+    if (fn) fn();
+  }
+  // Public page re-renders
+  if (typeof renderHome !== 'undefined' && document.getElementById('page-home')?.classList.contains('active')) renderHome();
+  if (typeof renderScores !== 'undefined' && document.getElementById('page-scores')?.classList.contains('active')) renderScores();
+}
+
+window.toggleLang = function() { setLang(LANG === 'es' ? 'en' : 'es'); };
 
 // ── Firebase init ──
 const firebaseConfig = {
@@ -296,22 +812,22 @@ function startListeners(){
 
 // ── NAVIGATION ──
 let currentPage = 'dashboard';
-const pageTitles = {
-  dashboard:['Dashboard','Resumen general de la liga'],
-  equipos:['Equipos','Registro y gestión de equipos'],
-  jugadores:['Jugadores','Registro de jugadores por equipo'],
-  calendario:['Calendario','Jornadas y resultados'],
-  standings:['Tabla de Posiciones','Clasificación automática'],
-  goleadores:['Tabla de Goleadores','Estadísticas individuales'],
-  pagos:['Control de Pagos','Inscripciones y pagos'],
-  config:['Configuración','Parámetros de la liga'],
-  expedientes:['Expedientes','Historial completo por jugador']
-};
+function pageTitles() { return {
+  dashboard: [t('nav_dashboard'), t('sub_dashboard')],
+  equipos:   [t('nav_equipos'),   t('sub_equipos')],
+  jugadores: [t('nav_jugadores'), t('sub_jugadores')],
+  calendario:[t('nav_calendario'),t('sub_calendario')],
+  standings: [t('nav_standings'), t('sub_standings')],
+  goleadores:[t('nav_goleadores'),t('sub_goleadores')],
+  pagos:     [t('nav_pagos'),     t('sub_pagos')],
+  config:    [t('nav_config'),    t('sub_config')],
+  expedientes:[t('nav_expedientes'),t('sub_expedientes')]
+};}
 window.nav = function(page){
   currentPage=page;
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n=>{ if(n.getAttribute('onclick')===`nav('${page}')`) n.classList.add('active'); });
-  const [title,sub]=pageTitles[page]||[page,''];
+  const [title,sub]=(pageTitles()[page])||[page,''];
   document.getElementById('topbar-title').textContent=title;
   document.getElementById('topbar-sub').textContent=sub;
   document.getElementById('topbar-actions').innerHTML='';
@@ -375,14 +891,14 @@ function renderDashboard(){
   document.getElementById('content').innerHTML=`
     <div class="kpi-grid">
       <div class="kpi"><div class="kpi-label">Equipos</div><div class="kpi-val" style="color:var(--blue)">${DB.equipos.length}</div><div class="kpi-sub">de ${DB.config.equiposMax||50} máx</div></div>
-      <div class="kpi"><div class="kpi-label">Jugadores</div><div class="kpi-val" style="color:var(--purple)">${DB.jugadores.length}</div></div>
+      <div class="kpi"><div class="kpi-label">'+t('col_players')+'</div><div class="kpi-val" style="color:var(--purple)">${DB.jugadores.length}</div></div>
       <div class="kpi"><div class="kpi-label">Partidos</div><div class="kpi-val" style="color:var(--accent)">${DB.partidos.length}</div><div class="kpi-sub">${jugados} jugados</div></div>
       <div class="kpi"><div class="kpi-label">Pendientes</div><div class="kpi-val" style="color:var(--gold)">${pendientes}</div></div>
       <div class="kpi"><div class="kpi-label">Recaudado</div><div class="kpi-val" style="color:var(--green)">${DB.config.moneda||'USD'}${totalCobrado.toLocaleString()}</div><div class="kpi-sub">de $${totalEsperado.toLocaleString()}</div></div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
       <div class="card"><div style="font-weight:700;margin-bottom:12px">🥇 Top 5 Standings</div>
-        ${st.length?`<div class="table-wrap"><table><thead><tr><th>Pos</th><th>Equipo</th><th>PJ</th><th>Pts</th><th>Dif</th></tr></thead><tbody>${topRows}</tbody></table></div>`:'<div style="padding:20px;text-align:center;color:var(--text3)">Sin datos</div>'}
+        ${st.length?`<div class="table-wrap"><table><thead><tr><th>Pos</th><th>'+t('col_team')+'</th><th>'+t('col_mp')+'</th><th>'+t('col_pts')+'</th><th>'+t('col_gd')+'</th></tr></thead><tbody>${topRows}</tbody></table></div>`:'<div style="padding:20px;text-align:center;color:var(--text3)">Sin datos</div>'}
       </div>
       <div class="card"><div style="font-weight:700;margin-bottom:10px">⚽ Últimos resultados</div>${recientes}</div>
     </div>
@@ -398,7 +914,7 @@ function renderDashboard(){
 
 // ── EQUIPOS ──
 function renderEquipos(){
-  document.getElementById('topbar-actions').innerHTML=`<button class="btn btn-primary" onclick="modalNuevoEquipo()">+ Nuevo equipo</button>`;
+  document.getElementById('topbar-actions').innerHTML=`<button class="btn btn-primary" onclick="modalNuevoEquipo()">${t('teams_new')}</button>`;
   const q=(document.getElementById('eq-search')||{}).value||'';
   const items=DB.equipos.filter(e=>!q||e.nombre.toLowerCase().includes(q.toLowerCase()));
   const rows=items.map(e=>{
@@ -410,7 +926,7 @@ function renderEquipos(){
       <td>${esc(e.entrenador||'—')}</td><td>${esc(e.telefono||'—')}</td>
       <td class="td-center">${getJugadoresByEquipo(e.id).length}</td>
       <td><span class="badge ${pb}">${pst}</span></td>
-      <td><span class="badge ${e.activo!==false?'badge-green':'badge-gray'}">${e.activo!==false?'Activo':'Inactivo'}</span></td>
+      <td><span class="badge ${e.activo!==false?'badge-green':'badge-gray'}">${e.activo!==false?t('team_active'):t('team_inactive')}</span></td>
       <td>
         <button class="btn-icon" onclick="modalEditarEquipo('${e.id}')">✏️</button>
         <button class="btn-icon" style="margin-left:4px;color:#e74c3c" onclick="eliminarEquipo('${e.id}')">🗑️</button>
@@ -421,7 +937,7 @@ function renderEquipos(){
     <div class="search-bar"><input id="eq-search" placeholder="Buscar equipo..." oninput="renderEquipos()" value="${esc(q)}">
       <button class="btn btn-secondary" onclick="modalImportEquipos()">📥 Importar lista</button></div>
     <div class="table-wrap"><table>
-      <thead><tr><th>Equipo</th><th>Entrenador</th><th>Teléfono</th><th>Jugadores</th><th>Pago</th><th>Estado</th><th>Acciones</th></tr></thead>
+      <thead><tr><th>'+t('col_team')+'</th><th>'+t('col_coach')+'</th><th>'+t('col_phone')+'</th><th>'+t('col_players')+'</th><th>'+t('col_payment')+'</th><th>'+t('col_status')+'</th><th>'+t('col_actions')+'</th></tr></thead>
       <tbody>${rows||'<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text3)">Sin equipos registrados</td></tr>'}</tbody>
     </table></div>
     <div style="margin-top:12px;font-size:12px;color:var(--text3)">${items.length} equipo(s)</div>`;
@@ -431,8 +947,8 @@ function modalNuevoEquipo(){
   openModal(`<div class="modal-header"><span class="modal-title">🛡️ Nuevo Equipo</span><button class="btn-icon" onclick="closeModal()">✕</button></div>
     <div class="form-grid">
       <div class="form-group" style="grid-column:1/-1"><label>Nombre *</label><input id="f-nombre" placeholder="Ej: Los Tigres FC"></div>
-      <div class="form-group"><label>Entrenador</label><input id="f-entrenador"></div>
-      <div class="form-group"><label>Teléfono</label><input id="f-tel"></div>
+      <div class="form-group"><label>'+t('col_coach')+'</label><input id="f-entrenador"></div>
+      <div class="form-group"><label>'+t('col_phone')+'</label><input id="f-tel"></div>
       <div class="form-group"><label>Email</label><input id="f-email" type="email"></div>
       <div class="form-group"><label>Categoría</label><select id="f-cat"><option>Open</option><option>Sub-20</option><option>Sub-18</option><option>Veteranos</option><option>Femenil</option></select></div>
       <div class="form-group"><label>Ciudad</label><input id="f-ciudad"></div>
@@ -462,8 +978,8 @@ function modalEditarEquipo(id){
   openModal(`<div class="modal-header"><span class="modal-title">✏️ Editar Equipo</span><button class="btn-icon" onclick="closeModal()">✕</button></div>
     <div class="form-grid">
       <div class="form-group" style="grid-column:1/-1"><label>Nombre *</label><input id="f-nombre" value="${esc(e.nombre)}"></div>
-      <div class="form-group"><label>Entrenador</label><input id="f-entrenador" value="${esc(e.entrenador||'')}"></div>
-      <div class="form-group"><label>Teléfono</label><input id="f-tel" value="${esc(e.telefono||'')}"></div>
+      <div class="form-group"><label>'+t('col_coach')+'</label><input id="f-entrenador" value="${esc(e.entrenador||'')}"></div>
+      <div class="form-group"><label>'+t('col_phone')+'</label><input id="f-tel" value="${esc(e.telefono||'')}"></div>
       <div class="form-group"><label>Email</label><input id="f-email" value="${esc(e.email||'')}"></div>
       <div class="form-group"><label>Categoría</label><select id="f-cat">${['Open','Sub-20','Sub-18','Veteranos','Femenil'].map(c=>`<option${c===e.categoria?' selected':''}>${c}</option>`).join('')}</select></div>
       <div class="form-group"><label>Ciudad</label><input id="f-ciudad" value="${esc(e.ciudad||'')}"></div>
@@ -504,7 +1020,7 @@ window.importarEquipos = async function(){
 
 // ── JUGADORES ──
 function renderJugadores(){
-  document.getElementById('topbar-actions').innerHTML=`<button class="btn btn-primary" onclick="modalNuevoJugador()">+ Nuevo jugador</button>`;
+  document.getElementById('topbar-actions').innerHTML=`<button class="btn btn-primary" onclick="modalNuevoJugador()">${t('players_new')}</button>`;
   const q=(document.getElementById('jug-search')||{}).value||'';
   const eq=(document.getElementById('jug-equipo')||{}).value||'';
   let items=DB.jugadores;
@@ -532,7 +1048,7 @@ function renderJugadores(){
       </select>
     </div>
     <div class="table-wrap"><table>
-      <thead><tr><th>Jugador</th><th>#</th><th>Equipo</th><th>Posición</th><th>Goles</th><th>Asist.</th><th>Tarjetas</th><th>Acciones</th></tr></thead>
+      <thead><tr><th>Jugador</th><th>#</th><th>'+t('col_team')+'</th><th>Posición</th><th>Goles</th><th>Asist.</th><th>Tarjetas</th><th>'+t('col_actions')+'</th></tr></thead>
       <tbody>${rows||'<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--text3)">Sin jugadores</td></tr>'}</tbody>
     </table></div>`;
 }
@@ -546,7 +1062,7 @@ function modalNuevoJugador(eqDefault){
       <div class="form-group"><label>Número</label><input id="f-numero" type="number" min="1" max="99" placeholder="10"></div>
       <div class="form-group"><label>Posición</label><select id="f-pos"><option value="">—</option><option>QB (Quarterback)</option><option>WR (Wide Receiver)</option><option>RB (Running Back)</option><option>Center</option><option>Safety</option><option>Cornerback</option><option>Linebacker</option><option>Rusher</option></select></div>
       <div class="form-group"><label>Fecha nacimiento</label><input id="f-fnac" type="date"></div>
-      <div class="form-group"><label>Teléfono</label><input id="f-tel"></div>
+      <div class="form-group"><label>'+t('col_phone')+'</label><input id="f-tel"></div>
       <div class="form-group"><label>Goles</label><input id="f-goles" type="number" value="0"></div>
       <div class="form-group"><label>Asistencias</label><input id="f-asist" type="number" value="0"></div>
       <div class="form-group"><label>T. Amarillas</label><input id="f-ta" type="number" value="0"></div>
@@ -584,7 +1100,7 @@ function modalEditarJugador(id){
       <div class="form-group"><label>Número</label><input id="f-numero" type="number" value="${j.numero||''}"></div>
       <div class="form-group"><label>Posición</label><select id="f-pos"><option value="">—</option><option>QB (Quarterback)</option><option>WR (Wide Receiver)</option><option>RB (Running Back)</option><option>Center</option><option>Safety</option><option>Cornerback</option><option>Linebacker</option><option>Rusher</option></select></div>
       <div class="form-group"><label>Fecha nacimiento</label><input id="f-fnac" type="date" value="${j.fnac||''}"></div>
-      <div class="form-group"><label>Teléfono</label><input id="f-tel" value="${esc(j.telefono||'')}"></div>
+      <div class="form-group"><label>'+t('col_phone')+'</label><input id="f-tel" value="${esc(j.telefono||'')}"></div>
       <div class="form-group"><label>Goles</label><input id="f-goles" type="number" value="${j.goles||0}"></div>
       <div class="form-group"><label>Asistencias</label><input id="f-asist" type="number" value="${j.asistencias||0}"></div>
       <div class="form-group"><label>T. Amarillas</label><input id="f-ta" type="number" value="${j.tarjetas_a||0}"></div>
@@ -636,7 +1152,7 @@ function renderCalendario(){
           </div>
         </div>
         <div style="display:flex;gap:4px;align-items:center">
-          <span class="badge ${isDone?'badge-green':'badge-gray'}">${isDone?'Final':'Pend.'}</span>
+          <span class="badge ${isDone?'badge-green':'badge-gray'}">${isDone?t('cal_final'):t('cal_pending')}</span>
           <button class="btn-icon btn-sm" onclick="editarPartido('${p.id}')">✏️</button>
         </div>
       </div>`;
@@ -667,7 +1183,7 @@ window.updateScore = function(id, gl, gv){
     const p=DB.partidos.find(x=>x.id===id); if(!p) return;
     const newGl=gl!==null?gl:p.golLocal;
     const newGv=gv!==null?gv:p.golVisit;
-    const estado=(newGl!==''&&newGl!==null&&newGl!==undefined&&newGv!==''&&newGv!==null&&newGv!==undefined)?'Final':'Pendiente';
+    const estado=(newGl!==''&&newGl!==null&&newGl!==undefined&&newGv!==''&&newGv!==null&&newGv!==undefined)?t('cal_final'):'Pendiente';
     try{ await updateDoc(doc(db,'partidos',id),{golLocal:newGl,golVisit:newGv,estado}); }
     catch(e){ notify('Error guardando resultado','error'); }
   },600);
@@ -729,7 +1245,7 @@ window.editarPartido = async function(id){
       <div class="form-group"><label>Campo</label><select id="f-campo">${campoOpts}</select></div>
       <div class="form-group"><label>Goles ${esc(loc)}</label><input id="f-gl" type="number" min="0" value="${p.golLocal||''}"></div>
       <div class="form-group"><label>Goles ${esc(vis)}</label><input id="f-gv" type="number" min="0" value="${p.golVisit||''}"></div>
-      <div class="form-group"><label>Estado</label><select id="f-estado"><option${p.estado==='Pendiente'?' selected':''}>Pendiente</option><option${p.estado==='Final'?' selected':''}>Final</option><option${p.estado==='Cancelado'?' selected':''}>Cancelado</option></select></div>
+      <div class="form-group"><label>'+t('col_status')+'</label><select id="f-estado"><option${p.estado==='Pendiente'?' selected':''}>Pendiente</option><option${p.estado===t('cal_final')?' selected':''}>Final</option><option${p.estado==='Cancelado'?' selected':''}>Cancelado</option></select></div>
     </div>
     <div class="modal-footer"><button class="btn btn-secondary" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="guardarPartido('${id}')">Guardar</button></div>`);
 };
@@ -765,7 +1281,7 @@ function renderStandings(){
   }).join('');
   document.getElementById('content').innerHTML=`
     <div class="table-wrap"><table>
-      <thead><tr><th>Pos</th><th>Equipo</th><th>PJ</th><th>PG</th><th>PE</th><th>PP</th><th>GF</th><th>GC</th><th>Dif</th><th>Pts</th><th>%Vic</th></tr></thead>
+      <thead><tr><th>Pos</th><th>'+t('col_team')+'</th><th>'+t('col_mp')+'</th><th>'+t('col_w')+'</th><th>'+t('col_d')+'</th><th>'+t('col_l')+'</th><th>'+t('col_gf')+'</th><th>'+t('col_ga')+'</th><th>'+t('col_gd')+'</th><th>'+t('col_pts')+'</th><th>'+t('col_wpct')+'</th></tr></thead>
       <tbody>${rows||'<tr><td colspan="11" style="text-align:center;padding:32px;color:var(--text3)">Sin datos. Ingresa resultados en el Calendario.</td></tr>'}</tbody>
     </table></div>
     <div style="margin-top:12px;font-size:12px;color:var(--text3)">Victoria=${DB.config.ptsVictoria}pts · Empate=${DB.config.ptsEmpate}pts · Derrota=${DB.config.ptsDerrota}pts</div>`;
@@ -785,7 +1301,7 @@ function renderGoleadores(){
   </tr>`).join('');
   document.getElementById('content').innerHTML=`
     <div class="table-wrap"><table>
-      <thead><tr><th>Pos</th><th>Jugador</th><th>Equipo</th><th>Goles</th><th>Asist.</th><th>T.Am.</th><th>T.Ro.</th></tr></thead>
+      <thead><tr><th>Pos</th><th>Jugador</th><th>'+t('col_team')+'</th><th>Goles</th><th>Asist.</th><th>T.Am.</th><th>T.Ro.</th></tr></thead>
       <tbody>${rows||'<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text3)">Sin goles registrados</td></tr>'}</tbody>
     </table></div>`;
 }
@@ -875,7 +1391,7 @@ function renderPagosEquipos(){
     </tr>`;
   }).join('');
   return `<div class="table-wrap"><table>
-    <thead><tr><th>Equipo</th><th>Cuota inscr.</th><th>Pagado</th><th>Pendiente</th><th>Progreso</th><th>Estado</th><th>Extras</th><th>Acción</th></tr></thead>
+    <thead><tr><th>'+t('col_team')+'</th><th>Cuota inscr.</th><th>Pagado</th><th>Pendiente</th><th>Progreso</th><th>'+t('col_status')+'</th><th>Extras</th><th>Acción</th></tr></thead>
     <tbody>${rows||'<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--text3)">Sin equipos</td></tr>'}</tbody>
   </table></div>`;
 }
@@ -900,7 +1416,7 @@ function renderPagosJugadores(){
     </tr>`;
   }).join('');
   return `<div class="table-wrap"><table>
-    <thead><tr><th>Jugador</th><th>Equipo</th><th>Artículos</th><th>Total pagado</th><th>Estado</th><th>Acción</th></tr></thead>
+    <thead><tr><th>Jugador</th><th>'+t('col_team')+'</th><th>Artículos</th><th>Total pagado</th><th>'+t('col_status')+'</th><th>Acción</th></tr></thead>
     <tbody>${rows||'<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--text3)">Sin jugadores registrados</td></tr>'}</tbody>
   </table></div>`;
 }
@@ -925,7 +1441,7 @@ function renderPagosTodos(){
     </tr>`;
   }).join('');
   return `<div class="table-wrap"><table>
-    <thead><tr><th>Fecha</th><th>Concepto</th><th>Equipo</th><th>Jugador</th><th>Monto</th><th>Método</th><th>Estado</th><th>Ref</th><th></th></tr></thead>
+    <thead><tr><th>Fecha</th><th>Concepto</th><th>'+t('col_team')+'</th><th>Jugador</th><th>Monto</th><th>Método</th><th>'+t('col_status')+'</th><th>Ref</th><th></th></tr></thead>
     <tbody>${rows||'<tr><td colspan="9" style="text-align:center;padding:32px;color:var(--text3)">Sin pagos registrados</td></tr>'}</tbody>
   </table></div>`;
 }
@@ -944,7 +1460,7 @@ window.modalNuevoPago = function(eqDefault, jugDefault, concDefault){
         <select id="f-concepto" onchange="onConcChange(this.value)">${conOpts}</select>
       </div>
       <div class="form-group" style="grid-column:1/-1">
-        <label>Equipo</label>
+        <label>'+t('col_team')+'</label>
         <select id="f-equipo" onchange="onEquipoChange(this.value)">
           <option value="">— Sin equipo —</option>${eqOpts}
         </select>
@@ -960,7 +1476,7 @@ window.modalNuevoPago = function(eqDefault, jugDefault, concDefault){
       <div class="form-group"><label>Método de pago</label>
         <select id="f-metodo"><option>Efectivo</option><option>Transferencia</option><option>Venmo</option><option>Zelle</option><option>PayPal</option><option>Otro</option></select>
       </div>
-      <div class="form-group"><label>Estado</label>
+      <div class="form-group"><label>'+t('col_status')+'</label>
         <select id="f-estado"><option>Pagado</option><option>Parcial</option><option>Pendiente</option></select>
       </div>
       <div class="form-group"><label>Cantidad / talla</label><input id="f-talla" placeholder="Ej: M, L, XL, Kit #5"></div>
@@ -1060,7 +1576,7 @@ window.verHistorialEquipo = function(eqId){
   openModal(`<div class="modal-header"><span class="modal-title">📋 ${esc(e.nombre)}</span><button class="btn-icon" onclick="closeModal()">✕</button></div>
     <div style="margin-bottom:12px;font-size:13px;color:var(--text2)">Total pagado: <strong style="color:var(--green)">${MON()}${totalPagado}</strong> · ${pagos.length} registro(s)</div>
     <div class="table-wrap" style="max-height:380px;overflow-y:auto"><table>
-      <thead><tr><th>Fecha</th><th>Concepto</th><th>Jugador</th><th>Monto</th><th>Método</th><th>Estado</th><th>Ref/Talla</th><th></th></tr></thead>
+      <thead><tr><th>Fecha</th><th>Concepto</th><th>Jugador</th><th>Monto</th><th>Método</th><th>'+t('col_status')+'</th><th>Ref/Talla</th><th></th></tr></thead>
       <tbody>${rows||'<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text3)">Sin pagos</td></tr>'}</tbody>
     </table></div>
     <div class="modal-footer">
@@ -1094,7 +1610,7 @@ window.verHistorialJugador = function(jugId){
       ${eq?`Equipo: <strong>${esc(eq.nombre)}</strong> · `:''}Total pagado: <strong style="color:var(--green)">${MON()}${totalPagado}</strong>
     </div>
     <div class="table-wrap" style="max-height:340px;overflow-y:auto"><table>
-      <thead><tr><th>Fecha</th><th>Concepto</th><th>Monto</th><th>Método</th><th>Estado</th><th>Talla</th><th>Ref</th><th></th></tr></thead>
+      <thead><tr><th>Fecha</th><th>Concepto</th><th>Monto</th><th>Método</th><th>'+t('col_status')+'</th><th>Talla</th><th>Ref</th><th></th></tr></thead>
       <tbody>${rows||'<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text3)">Sin pagos registrados</td></tr>'}</tbody>
     </table></div>
     <div class="modal-footer">
@@ -1236,7 +1752,7 @@ function renderExpedientes(){
       </td>
       <td class="td-center">${lesiones>0?`<span class="badge badge-red">⚠️ ${lesiones}</span>`:'<span style="color:var(--text3)">—</span>'}</td>
       <td class="td-center">${waiverOk?'<span class="badge badge-green">✅ Firmado</span>':'<span class="badge badge-red">❌ Pendiente</span>'}</td>
-      <td class="td-center"><span class="badge ${exp?'badge-green':'badge-gray'}">${exp?'Completo':'Incompleto'}</span></td>
+      <td class="td-center"><span class="badge ${exp?'badge-green':'badge-gray'}">${exp?t('rec_complete'):t('rec_incomplete')}</span></td>
       <td><button class="btn-icon" onclick="event.stopPropagation();abrirExpediente('${j.id}')">📁</button></td>
     </tr>`;
   }).join('');
@@ -1249,7 +1765,7 @@ function renderExpedientes(){
       </select>
     </div>
     <div class="table-wrap"><table>
-      <thead><tr><th>Jugador</th><th>Equipo</th><th>Asistencia</th><th>Incidentes</th><th>Waiver</th><th>Expediente</th><th></th></tr></thead>
+      <thead><tr><th>Jugador</th><th>'+t('col_team')+'</th><th>Asistencia</th><th>Incidentes</th><th>Waiver</th><th>Expediente</th><th></th></tr></thead>
       <tbody>${rows||'<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text3)">Sin jugadores registrados</td></tr>'}</tbody>
     </table></div>
     <div style="margin-top:10px;font-size:12px;color:var(--text3)">${jugadores.length} jugador(es) · Haz clic en cualquier fila para ver el expediente completo</div>`;
@@ -1326,7 +1842,7 @@ window.abrirExpediente = async function(jugadorId){
       <div class="form-group"><label>Fecha de nacimiento</label><input id="ep-fnac" type="date" value="${j.fnac||''}"></div>
       <div class="form-group"><label>CURP</label><input id="ep-curp" value="${esc(exp?.curp||'')}" placeholder="CURP del jugador"></div>
       <div class="form-group"><label>NSS (Seguro Social)</label><input id="ep-nss" value="${esc(exp?.nss||'')}" placeholder="Número de seguro"></div>
-      <div class="form-group"><label>Teléfono</label><input id="ep-tel" value="${esc(j.telefono||'')}"></div>
+      <div class="form-group"><label>'+t('col_phone')+'</label><input id="ep-tel" value="${esc(j.telefono||'')}"></div>
       <div class="form-group"><label>Email</label><input id="ep-email" value="${esc(j.email||'')}"></div>
       <div class="form-group"><label>Dirección</label><input id="ep-direccion" value="${esc(exp?.direccion||'')}"></div>
       <div class="form-group"><label>Ciudad</label><input id="ep-ciudad" value="${esc(exp?.ciudad||'')}"></div>
@@ -1398,7 +1914,7 @@ window.abrirExpediente = async function(jugadorId){
     </div>
     ${sesRows
       ? `<div class="table-wrap" style="max-height:320px;overflow-y:auto"><table>
-          <thead><tr><th>Fecha</th><th>Tipo</th><th>Estado</th><th>Nota</th><th>Cambiar</th></tr></thead>
+          <thead><tr><th>Fecha</th><th>Tipo</th><th>'+t('col_status')+'</th><th>Nota</th><th>Cambiar</th></tr></thead>
           <tbody>${sesRows}</tbody>
         </table></div>`
       : '<div style="padding:24px;text-align:center;color:var(--text3)">Sin sesiones registradas aún.<br>Usa "Pasar lista" para agregar sesiones.</div>'}
@@ -1597,7 +2113,7 @@ window.modalListaAsistencia = function(){
           <option>Entrenamiento</option><option>Partido</option><option>Práctica</option><option>Reunión</option><option>Evento</option>
         </select>
       </div>
-      <div class="form-group" style="grid-column:1/-1"><label>Equipo</label>
+      <div class="form-group" style="grid-column:1/-1"><label>'+t('col_team')+'</label>
         <select id="asis-equipo" onchange="filtrarListaJugadores(this.value)">
           <option value="">Todos los equipos</option>${eqOpts}
         </select>
@@ -1749,6 +2265,7 @@ window.eliminarIncidente = async function(incId, jugadorId){
 
 // ── INIT ──
 startListeners();
+setLang(LANG); // apply saved language
 nav('dashboard');
 
 // Expose functions needed by inline onclick handlers
