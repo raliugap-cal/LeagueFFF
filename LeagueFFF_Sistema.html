@@ -276,7 +276,7 @@ const TRANSLATIONS = {
   "player_all_teams": "Todos los equipos",
   "player_no_players": "Sin jugadores",
   "cal_generate": "🔄 Generar calendario",
-  "cal_confirm_gen": t('cal_confirm_gen'),
+  "cal_confirm_gen": "¿Regenerar? Se perderán resultados actuales.",
   "cal_all_rounds": "Todas las jornadas",
   "cal_all_teams": "Todos los equipos",
   "cal_total": "{0} partidos totales",
@@ -759,14 +759,16 @@ function closeModal(){ document.getElementById('modal').style.display='none'; }
 function startListeners(){
   // Config
   onSnapshot(COL.config(), snap => {
+    showFirebaseOk();
     if(snap.exists()){ DB.config = {...DB.config, ...snap.data()}; }
     document.getElementById('sb-league-name').textContent = DB.config.liga||'League FFF';
     document.getElementById('sb-season').textContent = 'Temporada '+(DB.config.temporada||'2025');
     if(currentPage==='config') renderConfig();
     if(currentPage==='dashboard') renderDashboard();
-  });
+  }, err => showFirebaseError(err));
   // Equipos
   onSnapshot(query(COL.equipos(), orderBy('nombre')), snap => {
+    showFirebaseOk();
     DB.equipos = snap.docs.map(d=>({id:d.id,...d.data()}));
     if(currentPage==='equipos') renderEquipos();
     if(currentPage==='dashboard') renderDashboard();
@@ -775,6 +777,7 @@ function startListeners(){
   });
   // Jugadores
   onSnapshot(query(COL.jugadores(), orderBy('nombre')), snap => {
+    showFirebaseOk();
     DB.jugadores = snap.docs.map(d=>({id:d.id,...d.data()}));
     if(currentPage==='jugadores') renderJugadores();
     if(currentPage==='goleadores') renderGoleadores();
@@ -782,6 +785,7 @@ function startListeners(){
   });
   // Partidos
   onSnapshot(query(COL.partidos(), orderBy('jornada')), snap => {
+    showFirebaseOk();
     DB.partidos = snap.docs.map(d=>({id:d.id,...d.data()}));
     if(currentPage==='calendario') renderCalendario();
     if(currentPage==='standings') renderStandings();
@@ -789,6 +793,7 @@ function startListeners(){
   });
   // Pagos
   onSnapshot(query(COL.pagos(), orderBy('fecha')), snap => {
+    showFirebaseOk();
     DB.pagos = snap.docs.map(d=>({id:d.id,...d.data()}));
     if(currentPage==='pagos') renderPagos();
     if(currentPage==='dashboard') renderDashboard();
@@ -797,17 +802,19 @@ function startListeners(){
   onSnapshot(query(COL.expedientes()), snap => {
     DB.expedientes = snap.docs.map(d=>({id:d.id,...d.data()}));
     if(currentPage==='expedientes') renderExpedientes();
-  });
-  // Asistencias
-  onSnapshot(query(COL.asistencias(), orderBy('fecha')), snap => {
-    DB.asistencias = snap.docs.map(d=>({id:d.id,...d.data()}));
+  }, err => showFirebaseError(err));
+  // Asistencias (no orderBy - avoid index requirement on new collection)
+  onSnapshot(query(COL.asistencias()), snap => {
+    DB.asistencias = snap.docs.map(d=>({id:d.id,...d.data()}))
+      .sort((a,b)=>(a.fecha||'').localeCompare(b.fecha||''));
     if(currentPage==='expedientes') renderExpedientes();
-  });
-  // Incidentes
-  onSnapshot(query(COL.incidentes(), orderBy('fecha')), snap => {
-    DB.incidentes = snap.docs.map(d=>({id:d.id,...d.data()}));
+  }, err => showFirebaseError(err));
+  // Incidentes (no orderBy - avoid index requirement on new collection)
+  onSnapshot(query(COL.incidentes()), snap => {
+    DB.incidentes = snap.docs.map(d=>({id:d.id,...d.data()}))
+      .sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''));
     if(currentPage==='expedientes') renderExpedientes();
-  });
+  }, err => showFirebaseError(err));
 }
 
 // ── NAVIGATION ──
@@ -836,6 +843,38 @@ window.nav = function(page){
     pagos:renderPagos,config:renderConfig,expedientes:renderExpedientes};
   (renders[page]||renderDashboard)();
 };
+
+// ── FIREBASE ERROR HANDLER ──
+function showFirebaseError(err){
+  console.error('Firebase error:', err);
+  const el = document.getElementById('sync-status');
+  if(el){ el.textContent = '⚠️ Sin conexión'; el.style.color = '#e74c3c'; }
+  // Show banner if content is empty
+  const content = document.getElementById('content');
+  if(content && content.innerHTML.includes('Conectando')){
+    content.innerHTML = `<div style="background:rgba(231,76,60,.12);border:1px solid rgba(231,76,60,.3);border-radius:10px;padding:24px;margin:20px 0">
+      <div style="font-size:16px;font-weight:700;color:#e74c3c;margin-bottom:8px">⚠️ Error de conexión Firebase</div>
+      <div style="font-size:13px;color:var(--text2);margin-bottom:16px">
+        ${err.code === 'permission-denied'
+          ? '🔒 <strong>Reglas de seguridad bloqueando acceso.</strong> Ve a Firebase Console → Firestore → Rules y configura las reglas de acceso.'
+          : err.code === 'unavailable'
+          ? '🌐 <strong>Sin conexión a internet.</strong> Verifica tu conexión e intenta de nuevo.'
+          : '🔧 <strong>' + (err.message||err.code||'Error desconocido') + '</strong>'}
+      </div>
+      <div style="font-size:12px;color:var(--text3);font-family:monospace;background:var(--bg3);padding:10px;border-radius:6px">
+        Code: ${err.code||'unknown'}<br>
+        Message: ${err.message||'—'}
+      </div>
+    </div>`;
+  }
+}
+function showFirebaseOk(){
+  const el = document.getElementById('sync-status');
+  if(el && el.style.color === 'rgb(231, 76, 60)'){
+    el.textContent = 'Conectado';
+    el.style.color = '';
+  }
+}
 
 // ── HELPERS ──
 function getEquipo(id){ return DB.equipos.find(e=>e.id===id); }
